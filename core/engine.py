@@ -1,28 +1,13 @@
-# cognitive-blackbox/core/engineGEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("API Key is missing or empty in st.secrets.")
-            
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-pro-latest').py
+# cognitive-blackbox/core/engine.py
 # -----------------------------------------------------------------------------
 # The AI Engine for the Cognitive Black Box Application
-# Version: v4.0 (Genesis Mode - FINAL & SYNTAX CORRECTED v17)
-# Author: H
-            # A simple test call to verify the key and model access
-            self.model.generate_content("test", generation_config={"max_output_tokens": 5})
-            
-            self.is_initialized = True
-oshino AI PM, with fix from C's diagnosis
-# This version corrects the critical SyntaxError in the fallback tool string.
+# Version: v4.0 (Genesis Mode - FINAL & CORRECTED v18)
+# Author: Hoshino AI PM
+# This version corrects the critical IndentationError.
 # -----------------------------------------------------------------------------
 
 import streamlit as st
-import google.generativeai as genai            self.error_message = None
-            logging.info("AI Engine initialized successfully.")
-
-        except Exception as e:
-            self.is_initialized = False
-            self.error_message = f"AI引擎初始化失败: {
+import google.generativeai as genai
 from typing import Dict, Any, Tuple
 import logging
 import random
@@ -32,29 +17,18 @@ logging.basicConfig(level=logging.INFO)
 class AIEngine:
     def __init__(self):
         self.model = None
-type(e).__name__} - {e}"
-            logging.error(self.error_message)
-
-    def _generate(self, prompt: str) -> Tuple[str, bool]:
-        if not self.is_initialized:
-            return self.error_message, False
-        
-        try:
-            safety_settings =        self.is_initialized = False
+        self.is_initialized = False
         self.error_message = None
         self._initialize()
 
     def _initialize(self):
         try:
             api_key = st.secrets.get("GEMINI_API_KEY")
-            if not api_key: raise ValueError("API Key is missing in st.secrets.")
+            if not api_key:
+                raise ValueError("API Key is missing in st.secrets.")
             
             genai.configure(api_key=api_key)
-            self.model = genai {
-                'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE',
-                'HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE',
-                'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'BLOCK_NONE',
-                'HARM_CATEGORY_DANGEROUS_CONTENT':.GenerativeModel('gemini-1.5-pro-latest')
+            self.model = genai.GenerativeModel('gemini-1.5-pro-latest')
             self.is_initialized = True
             logging.info("AI Engine initialized successfully.")
         except Exception as e:
@@ -63,55 +37,49 @@ type(e).__name__} - {e}"
             logging.error(self.error_message)
 
     def _generate(self, prompt: str) -> Tuple[str, bool]:
-        if 'BLOCK_NONE',
-            }
+        if not self.is_initialized:
+            return self.error_message, False
+        try:
+            safety_settings = [{'category': c, 'threshold': 'BLOCK_NONE'} for c in ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT']]
             response = self.model.generate_content(prompt, safety_settings=safety_settings)
-
-            if response.candidates and response.candidates[0].content.parts:
+            if response.parts:
                 return response.text, True
             else:
                 feedback = response.prompt_feedback
-                block_reason not self.is_initialized: return self.error_message, False
-        try:
-            safety_settings = [{'category': c, 'threshold': 'BLOCK_NONE'} for c in ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EX = feedback.block_reason if hasattr(feedback, 'block_reason') else 'Unknown'
-                error_msg = f"AI未能生成内容。原因: {block_reason}"
-                logging.warning(error_msg)
-PLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT']]
-            response = self.model.                return error_msg, False
-                
-        except Exception as e:
-            error_message = f"generate_content(prompt, safety_settings=safety_settings)
-            if response.parts: return response.text, True
-            else:
-                feedback = response.prompt_feedback
-                reason = feedback.block_reason调用AI API时发生程序错误: {e}"
-            logging.error(error_message)
-            return error if hasattr(feedback, 'block_reason') else 'Unknown'
+                reason = feedback.block_reason if hasattr(feedback, 'block_reason') else 'Unknown'
                 return f"内容被安全过滤拦截: {reason}", False
         except Exception as e:
-            logging.error(f"API Call Failed: {e}")_message, False
-
-    def generate_personalized_question(self, context: Dict[str, Any]) -> str:
-        # --- THE SYNTAX FIX IS HERE ---
-        prompt = f"""你是一位犀利的华
+            logging.error(f"API Call Failed: {e}")
             return f"API调用异常: {e}", False
 
-    def generate_personalized_question(self,尔街对冲基金经理。一个客户对“麦道夫”机会做出了“{context.get('act1_choice', '一个判断')}”的决策。请用一句简短、尖锐、直击要害的话来挑战他。"""
-        question, success = self._generate(prompt)
-        return question if success else context: Dict[str, Any]) -> str:
+    def generate_personalized_question(self, context: Dict[str, Any]) -> str:
         if not self.is_initialized:
             fallbacks = ["你真的确定这个判断是基于事实而非情感吗？", "从另一个角度看，这个决策最大的风险可能是什么？"]
             return random.choice(fallbacks)
-        prompt = f"你是一位资深的金融 "你真的确定你的判断是基于事实而非情感吗？"
-
-    def generate_personalized_tool(self, context:风险分析师。一位投资者对麦道夫投资机会选择了“{context.get('act1_choice', '未知选择')}”。请用一句简短的话(不超过30字)质疑这个选择，让投资者重新思考。 Dict[str, Any]) -> str:
-        prompt = f"""你是一位世界级的认知科学家。一个名叫“{context.get('user_name', '用户')}”的决策者学习了“麦道夫案例”，他的核心原则是：“{context.get('user_principle', '未提供')}”，第一幕决策是：“{context.get('act1_choice', '未记录')}”。请为他生成一个专属的“光环效应免疫系统要求: 专业且尖锐, 直击要害, 避免说教。"
+        
+        prompt = f"""你是一位资深的金融风险分析师。一位投资者对麦道夫投资机会选择了“{context.get('act1_choice', '未知选择')}”。请用一句简短的话(不超过30字)质疑这个选择，让投资者重新思考。要求: 专业且尖锐, 直击要害, 避免说教。"""
         question, success = self._generate(prompt)
-        return question if success else "你真的确定这个判断是基于事实而非情感吗”决策工具，必须包含一条针对他个人原则的独特建议。请使用Markdown格式化输出。"""
-        tool, success = self._generate(prompt)
-        return tool if success else f"抱歉，无法生成您的？"
+        return question if success else "你真的确定这个判断是基于事实而非情感吗？"
 
     def generate_personalized_tool(self, context: Dict[str, Any]) -> str:
         if not self.is_initialized:
             return self._get_fallback_tool(context)
-        prompt = f'请为用户"{context.get("user_name", "用户")}"创建一个光环效应免疫工具专属工具。错误信息：{tool}"
+        
+        prompt = f"""请为用户“{context.get("user_name", "用户")}”创建一个光环效应免疫工具。用户信息: 姓名: {context.get("user_name", "用户")}, 决策原则: {context.get("user_principle", "理性决策")}, 麦道夫案例选择: {context.get("act1_choice", "未记录")}。请生成包含以下内容的Markdown格式工具: 1. 个人化欢迎语(包含姓名) 2. 3-4条决策检查清单 3. 光环效应预警信号 4. 紧急刹车机制。要求: 实用、简洁、200-300字。"""
+        tool, success = self._generate(prompt)
+        return tool if success else self._get_fallback_tool(context)
+    
+    def _get_fallback_tool(self, context: Dict[str, Any]) -> str:
+        user_name = context.get('user_name', '您')
+        return f"""## 🛡️ {user_name}的光环效应免疫系统
+### 决策检查清单
+- [ ] **权威分离法**: 区分职位权威vs专业权威
+- [ ] **透明度测试**: 所有信息是否完全透明？
+- [ ] **独立验证**: 是否有真正独立的第三方证实？
+- [ ] **反向思维**: 去除光环后我还会做同样决策吗？
+### ⚠️ 预警信号
+- 过分强调权威身份而非具体能力
+- 信息不透明或"商业机密"
+- 群体从众压力
+### 🚨 紧急刹车机制
+**出现任意两个预警信号时，立即暂停决策，寻求独立专业意见。**"""
