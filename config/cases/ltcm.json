@@ -1,7 +1,7 @@
 {
   "id": "ltcm",
   "title": "LTCM：天才们的陨落",
-  "tagline": "“诺贝尔奖天团”的覆灭",
+  "tagline": ""诺贝尔奖天团"的覆灭",
   "bias": [
     "过度自信",
     "模型迷信",
@@ -11,5 +11,12 @@
   "difficulty": "专家",
   "duration_min": 18,
   "estimated_loss_usd": "46亿",
+  "framework": "RISK思维模型",
+  "act_1_options": [
+    "A. 两位诺贝尔奖得主+前美联储副主席，这是梦幻团队，25倍杠杆也值得信任！",
+    "B. 学术背景确实impressive，但杠杆太高了，只投入10%资金试试。",
+    "C. 要求详细了解风险模型的假设条件和历史压力测试结果再决定。",
+    "D. 再天才的模型也有盲点，25倍杠杆在黑天鹅面前就是灾难，坚决拒绝。"
+  ],
   "script_file": "ltcm_script.md"
 }
