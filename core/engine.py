@@ -31,8 +31,8 @@ class AIEngine:
             self.debug_info['genai_config'] = '已配置genai'
             
             # 保持原有的模型名称
-            self.model = genai.GenerativeModel('gemini-1.5-pro-latest')
-            self.debug_info['model_init'] = 'gemini-1.5-pro-latest模型已初始化'
+            self.model = genai.GenerativeModel('gemini-2.5-pro')
+            self.debug_info['model_init'] = 'gemini-2.5-pro模型已初始化'
             
             self.is_initialized = True
             self.debug_info['init_result'] = '初始化成功'
