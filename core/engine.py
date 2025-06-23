@@ -1,4 +1,4 @@
-# core/engine.py - 在原有代码基础上增强调试功能
+# core/engine.py - 智能模型降级版本
 import streamlit as st
 import google.generativeai as genai
 from typing import Dict, Any, Tuple
@@ -12,12 +12,12 @@ class AIEngine:
         self.model = None
         self.is_initialized = False
         self.error_message = None
-        self.debug_info = {}  # 新增：调试信息收集
+        self.debug_info = {}
+        self.current_model = None  # 新增：跟踪当前使用的模型
         self._initialize()
 
     def _initialize(self):
         try:
-            # 新增：详细的初始化调试
             self.debug_info['init_step'] = '开始初始化'
             
             api_key = st.secrets.get("GEMINI_API_KEY")
@@ -30,9 +30,8 @@ class AIEngine:
             genai.configure(api_key=api_key)
             self.debug_info['genai_config'] = '已配置genai'
             
-            # 保持原有的模型名称
-            self.model = genai.GenerativeModel('gemini-2.5-pro')
-            self.debug_info['model_init'] = 'gemini-2.5-pro模型已初始化'
+            # 智能模型选择策略
+            self._initialize_with_fallback()
             
             self.is_initialized = True
             self.debug_info['init_result'] = '初始化成功'
@@ -44,90 +43,157 @@ class AIEngine:
             self.debug_info['init_error'] = str(e)
             logging.error(self.error_message)
 
+    def _initialize_with_fallback(self):
+        """智能模型初始化 - 按配额友好程度排序"""
+        # 模型选择优先级：从最便宜/配额最宽松到最昂贵
+        model_priority = [
+            'gemini-1.5-flash',        # 最便宜，配额最宽松
+            'gemini-1.5-pro',          # 中等价格和配额
+            'gemini-2.5-pro'           # 最昂贵，配额最严格
+        ]
+        
+        for model_name in model_priority:
+            try:
+                self.model = genai.GenerativeModel(model_name)
+                self.current_model = model_name
+                self.debug_info['model_init'] = f'{model_name}模型已初始化'
+                break
+            except Exception as e:
+                self.debug_info[f'model_init_fail_{model_name}'] = str(e)
+                continue
+        
+        if not self.model:
+            raise ValueError("所有模型初始化失败")
+
     def _generate(self, prompt: str) -> Tuple[str, bool]:
-        # 新增：详细的调用调试信息
+        """智能生成 - 包含配额感知的模型降级"""
         call_debug = {
             'timestamp': str(type(self).__name__),
             'is_initialized': self.is_initialized,
             'prompt_length': len(prompt),
-            'model_available': self.model is not None
+            'model_available': self.model is not None,
+            'current_model': self.current_model
         }
         
         if not self.is_initialized:
             call_debug['early_exit'] = 'AI引擎未初始化'
             self.debug_info['last_call'] = call_debug
             return self.error_message, False
-            
-        try:
-            # 新增：记录调用前状态
-            call_debug['safety_settings_prepared'] = True
-            
-            safety_settings = [
-                {'category': c, 'threshold': 'BLOCK_NONE'} 
-                for c in ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 
-                         'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT']
-            ]
-            
-            call_debug['api_call_start'] = '开始API调用'
-            
-            # 执行原有的API调用逻辑
-            response = self.model.generate_content(prompt, safety_settings=safety_settings)
-            
-            call_debug['api_call_complete'] = 'API调用完成'
-            call_debug['response_available'] = response is not None
-            
-            # 新增：详细的响应分析
-            if response:
-                call_debug['response_type'] = str(type(response))
-                call_debug['has_parts'] = hasattr(response, 'parts') and bool(response.parts)
-                call_debug['has_text'] = hasattr(response, 'text')
-                call_debug['has_candidates'] = hasattr(response, 'candidates') and bool(response.candidates)
-                call_debug['has_prompt_feedback'] = hasattr(response, 'prompt_feedback')
+        
+        # 尝试当前模型，如果配额不足则降级
+        result = self._try_generate_with_fallback(prompt, call_debug)
+        self.debug_info['last_call'] = call_debug
+        return result
+
+    def _try_generate_with_fallback(self, prompt: str, call_debug: Dict) -> Tuple[str, bool]:
+        """尝试生成，遇到配额问题时自动降级模型"""
+        
+        # 模型降级顺序
+        fallback_models = [
+            self.current_model,        # 当前模型
+            'gemini-1.5-flash',        # 降级到Flash
+            'gemini-1.5-pro',          # 再降级到1.5 Pro
+        ]
+        
+        # 去重并保持顺序
+        unique_models = []
+        for model in fallback_models:
+            if model and model not in unique_models:
+                unique_models.append(model)
+        
+        for model_name in unique_models:
+            try:
+                call_debug[f'trying_model'] = model_name
                 
-                # 尝试获取文本的多种方法
-                if response.parts:
-                    call_debug['parts_count'] = len(response.parts) if response.parts else 0
-                    try:
-                        text_result = response.text
-                        call_debug['text_extraction'] = '成功通过response.text获取'
-                        call_debug['text_length'] = len(text_result) if text_result else 0
-                        self.debug_info['last_call'] = call_debug
-                        return text_result, True
-                    except Exception as text_error:
-                        call_debug['text_extraction_error'] = str(text_error)
+                # 如果需要切换模型
+                if self.current_model != model_name:
+                    self.model = genai.GenerativeModel(model_name)
+                    self.current_model = model_name
+                    call_debug[f'switched_to_model'] = model_name
                 
-                # 检查安全过滤
-                if hasattr(response, 'prompt_feedback'):
-                    feedback = response.prompt_feedback
-                    if hasattr(feedback, 'block_reason') and feedback.block_reason:
-                        call_debug['block_reason'] = str(feedback.block_reason)
-                        self.debug_info['last_call'] = call_debug
-                        return f"内容被安全过滤拦截: {feedback.block_reason}", False
+                # 执行API调用
+                result = self._execute_api_call(prompt, call_debug)
+                if result[1]:  # 如果成功
+                    call_debug['successful_model'] = model_name
+                    return result
+                    
+            except Exception as e:
+                error_str = str(e)
+                call_debug[f'error_{model_name}'] = error_str
                 
-                # 检查candidates
-                if hasattr(response, 'candidates') and response.candidates:
-                    candidate = response.candidates[0]
-                    call_debug['candidate_available'] = True
-                    if hasattr(candidate, 'finish_reason'):
-                        call_debug['finish_reason'] = str(candidate.finish_reason)
+                # 检查是否是配额错误
+                if '429' in error_str or 'quota' in error_str.lower() or 'exceeded' in error_str.lower():
+                    call_debug[f'quota_exceeded_{model_name}'] = True
+                    # 如果是配额错误，继续尝试下一个模型
+                    continue
+                else:
+                    # 如果是其他错误，返回错误信息
+                    return f"API调用异常: {e}", False
+        
+        # 所有模型都失败了
+        call_debug['all_models_failed'] = True
+        return "所有可用模型的配额都已耗尽，请稍后重试", False
+
+    def _execute_api_call(self, prompt: str, call_debug: Dict) -> Tuple[str, bool]:
+        """执行具体的API调用"""
+        call_debug['safety_settings_prepared'] = True
+        
+        safety_settings = [
+            {'category': c, 'threshold': 'BLOCK_NONE'} 
+            for c in ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 
+                     'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT']
+        ]
+        
+        call_debug['api_call_start'] = '开始API调用'
+        
+        response = self.model.generate_content(prompt, safety_settings=safety_settings)
+        
+        call_debug['api_call_complete'] = 'API调用完成'
+        call_debug['response_available'] = response is not None
+        
+        # 详细的响应分析
+        if response:
+            call_debug['response_type'] = str(type(response))
+            call_debug['has_parts'] = hasattr(response, 'parts') and bool(response.parts)
+            call_debug['has_text'] = hasattr(response, 'text')
+            call_debug['has_candidates'] = hasattr(response, 'candidates') and bool(response.candidates)
+            call_debug['has_prompt_feedback'] = hasattr(response, 'prompt_feedback')
             
-            call_debug['final_result'] = 'API返回空响应'
-            self.debug_info['last_call'] = call_debug
-            return "API返回空响应，请重试", False
+            # 尝试获取文本
+            if response.parts:
+                call_debug['parts_count'] = len(response.parts) if response.parts else 0
+                try:
+                    text_result = response.text
+                    call_debug['text_extraction'] = '成功通过response.text获取'
+                    call_debug['text_length'] = len(text_result) if text_result else 0
+                    return text_result, True
+                except Exception as text_error:
+                    call_debug['text_extraction_error'] = str(text_error)
             
-        except Exception as e:
-            call_debug['exception'] = str(e)
-            call_debug['exception_type'] = str(type(e))
-            self.debug_info['last_call'] = call_debug
-            logging.error(f"API Call Failed: {e}")
-            return f"API调用异常: {e}", False
+            # 检查安全过滤
+            if hasattr(response, 'prompt_feedback'):
+                feedback = response.prompt_feedback
+                if hasattr(feedback, 'block_reason') and feedback.block_reason:
+                    call_debug['block_reason'] = str(feedback.block_reason)
+                    return f"内容被安全过滤拦截: {feedback.block_reason}", False
+            
+            # 检查candidates
+            if hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                call_debug['candidate_available'] = True
+                if hasattr(candidate, 'finish_reason'):
+                    call_debug['finish_reason'] = str(candidate.finish_reason)
+        
+        call_debug['final_result'] = 'API返回空响应'
+        return "API返回空响应，请重试", False
 
     def get_debug_info(self) -> Dict[str, Any]:
-        """新增：获取调试信息的方法"""
+        """获取调试信息的方法"""
         return {
             'initialization': self.debug_info,
             'is_initialized': self.is_initialized,
             'error_message': self.error_message,
+            'current_model': self.current_model,
             'model_type': str(type(self.model)) if self.model else None
         }
 
