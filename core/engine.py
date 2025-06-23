@@ -167,31 +167,7 @@ class AIEngine:
             'model_type': str(type(self.model)) if self.model else None
         }
 
-    def generate_personalized_question(self, context: Dict[str, Any]) -> str:
-        """升级规约：全新的Damien角色质疑生成"""
-        if not self.is_initialized:
-            fallbacks = [
-                "这个'完美'的机会，最让你不安的是什么？",
-                "你的理性，是否被某种'光环'蒙蔽了？",
-                "除了表面的吸引力，你还看到了什么？"
-            ]
-            return random.choice(fallbacks)
-        
-        # 获取用户选择
-        user_choice = context.get('act1_choice', '未知选择')
-        
-        # 全新的Damien角色Prompt - 按规约要求
-        prompt = f"""SYSTEM: 你是一位世界顶级的、以尖锐和反向思维著称的对冲基金经理，你的名字叫"Damien"。你的任务是压力测试客户的投资逻辑。你只说一句最核心、最致命的质疑。
-
-USER CONTEXT:
-- Case: Madoff Ponzi Scheme
-- User's Initial Decision: "{user_choice}"
-
-TASK: Based on the user's decision, generate one sharp, insightful question to challenge their core assumption.
-
-EXAMPLE:
-- If user chose "相信权威", a good question is: "权威的'光环'，是否让你忽视了最基本的财务常识？"
-- If user chose "拒绝投资", a good question is: "你的直觉很准，但你能清晰地说出，这个'完美'机会中，最让你不安的'红灯信号'是哪一个吗？"
+拒绝投资", a good question is: "你的直觉很准，但你能清晰地说出，这个'完美'机会中，最让你不安的'红灯信号'是哪一个吗？"
 
 Now, generate a new, unique question for the user's decision. Your answer must be a single question, no longer than 40 characters."""
 
@@ -199,59 +175,109 @@ Now, generate a new, unique question for the user's decision. Your answer must b
         return question if success else "这个'完美'的机会，最让你不安的是什么？"
 
     def generate_personalized_tool(self, context: Dict[str, Any]) -> str:
-        """升级规约：全新的Athena角色工具生成"""
+        """升级规约：案例感知的Athena角色工具生成"""
         if not self.is_initialized:
             return self._get_premium_fallback_tool(context)
         
-        # 获取用户信息
+        # 获取用户信息和案例信息
+        case_id = context.get('case_id', 'unknown')
         user_name = context.get("user_name", "用户")
         user_principle = context.get("user_principle", "理性决策")
         user_choice = context.get("act1_choice", "未记录")
         
-        # 全新的Athena角色Prompt - 按规约要求
+        # 根据案例动态确定偏误类型和框架
+        if case_id == 'madoff':
+            case_name = "Madoff Ponzi Scheme"
+            bias_type = "光环效应"
+            bias_english = "Halo Effect"
+            framework = "四维独立验证矩阵"
+        elif case_id == 'lehman':
+            case_name = "Lehman Brothers Collapse"
+            bias_type = "确认偏误"
+            bias_english = "Confirmation Bias"
+            framework = "DOUBT思维模型"
+        elif case_id == 'ltcm':
+            case_name = "LTCM Collapse"
+            bias_type = "过度自信效应"
+            bias_english = "Overconfidence Effect"
+            framework = "RISK思维模型"
+        else:
+            case_name = "Financial Investment Case"
+            bias_type = "认知偏误"
+            bias_english = "Cognitive Bias"
+            framework = "理性决策框架"
+        
+        # 案例感知的Athena角色Prompt
         prompt = f"""SYSTEM: 你是一位名叫"Athena"的AI决策导师，你服务过无数诺贝尔奖得主和顶级企业家。你的任务是为你的客户，撰写一份高度个人化、可作为其终身行为准则的《决策心智模型备忘录》。
 
 USER CONTEXT:
-- Case Studied: Madoff Ponzi Scheme (Halo Effect)
+- Case Studied: {case_name} ({bias_english})
 - User Name: "{user_name}"
 - User's Personal Principle: "{user_principle}"
 - User's Initial Decision in the case: "{user_choice}"
+- Target Cognitive Bias: {bias_type}
+- Recommended Framework: {framework}
 
-TASK: Generate a personalized "Cognitive Immune System" memo in Markdown format. The memo must strictly follow this structure:
+TASK: Generate a personalized "Cognitive Immune System" memo in Markdown format. The memo must strictly follow this structure and be specifically tailored to {bias_type}:
 
-# 🛡️ 为 {user_name} 定制的【光环效应】免疫系统
+# 🛡️ 为 {user_name} 定制的【{bias_type}】免疫系统
 
-> 核心原则整合："{user_principle}"——这正是您对抗思维惯性的第一道防线。为了将它从'信念'变为'本能'，请在下次遇到类似权威时，将这句话大声朗读出来。
+> 核心原则整合："{user_principle}"——这正是您对抗{bias_type}的第一道防线。为了将它从'信念'变为'本能'，请在下次遇到类似情况时，将这句话大声朗读出来。
 
 ## 💡 基于您本次决策模式的专属建议
 
-(Based on the user's "{user_choice}", generate 1-2 unique, actionable suggestions here. Be creative and insightful.)
+(Based on the user's "{user_choice}" in {case_name}, generate 1-2 unique, actionable suggestions specifically for preventing {bias_type}. Be creative and insightful.)
 
-## ⚙️ 通用反制工具箱
+## ⚙️ 通用反制工具箱 - {framework}
 
-- **工具一：** (Provide one core, standardized countermeasure for the Halo Effect)
-- **工具二：** (Provide another core, standardized countermeasure for the Halo Effect)"""
+- **工具一：** (Provide one core countermeasure specifically for {bias_type})
+- **工具二：** (Provide another core countermeasure specifically for {bias_type})
+
+请确保所有建议都针对{bias_type}，而不是其他认知偏误。"""
 
         tool, success = self._generate(prompt)
-        return tool if success else self._get_premium_fallback_tool(context)
+        return tool if success else self._get_premium_fallback_tool(context, case_id)
     
-    def _get_premium_fallback_tool(self, context: Dict[str, Any]) -> str:
-        """高质量备选工具"""
+    def _get_premium_fallback_tool(self, context: Dict[str, Any], case_id: str = 'unknown') -> str:
+        """案例感知的高质量备选工具"""
         user_name = context.get('user_name', '您')
         user_principle = context.get('user_principle', '理性决策')
         user_choice = context.get('act1_choice', '未记录')
         
-        return f"""# 🛡️ 为 {user_name} 定制的【光环效应】免疫系统
+        # 根据案例确定偏误类型和工具
+        if case_id == 'lehman':
+            bias_type = "确认偏误"
+            framework = "DOUBT思维模型"
+            tools = """- **工具一：** 魔鬼代言人法——主动寻找反对自己观点的证据和理由
+- **工具二：** 反向验证法——强制收集与自己判断相冲突的信息"""
+            suggestions = """基于您选择了"{user_choice}"，我建议您：
+- 建立"反面证据收集"习惯，每个决策都要找到至少3个反对理由
+- 设立"信息平衡检查点"，确保正反面信息的比例不低于3:2"""
+        elif case_id == 'ltcm':
+            bias_type = "过度自信效应"
+            framework = "RISK思维模型"
+            tools = """- **工具一：** 概率校准训练——定期检验自己预测的准确率，培养概率思维
+- **工具二：** 极端情景压力测试——每个决策都要考虑1%极端情况的影响"""
+            suggestions = """基于您选择了"{user_choice}"，我建议您：
+- 建立"不确定性地图"，明确标注自己不知道的部分
+- 设置"模型失效预警机制"，当现实偏离预期时立即重新评估"""
+        else:  # madoff 或默认
+            bias_type = "光环效应"
+            framework = "四维独立验证矩阵"
+            tools = """- **工具一：** 权威分离验证法——将个人魅力与专业能力严格区分
+- **工具二：** 透明度压力测试——任何不透明的投资策略都是红旗信号"""
+            suggestions = """基于您选择了"{user_choice}"，我建议您：
+- 在面对权威人物时，先问自己："他的专业能力是否与投资决策直接相关？"
+- 建立一个"48小时冷静期"规则，任何重大投资决策都要经过这个时间缓冲"""
+        
+        return f"""# 🛡️ 为 {user_name} 定制的【{bias_type}】免疫系统
 
-> 核心原则整合："{user_principle}"——这正是您对抗思维惯性的第一道防线。为了将它从'信念'变为'本能'，请在下次遇到类似权威时，将这句话大声朗读出来。
+> 核心原则整合："{user_principle}"——这正是您对抗{bias_type}的第一道防线。为了将它从'信念'变为'本能'，请在下次遇到类似情况时，将这句话大声朗读出来。
 
 ## 💡 基于您本次决策模式的专属建议
 
-基于您选择了"{user_choice}"，我建议您：
-- 在面对权威人物时，先问自己："他的专业能力是否与投资决策直接相关？"
-- 建立一个"48小时冷静期"规则，任何重大投资决策都要经过这个时间缓冲。
+{suggestions.format(user_choice=user_choice)}
 
-## ⚙️ 通用反制工具箱
+## ⚙️ 通用反制工具箱 - {framework}
 
-- **工具一：** 权威分离验证法——将个人魅力与专业能力严格区分
-- **工具二：** 透明度压力测试——任何不透明的投资策略都是红旗信号"""
+{tools}"""
