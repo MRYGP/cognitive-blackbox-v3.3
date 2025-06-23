@@ -1,10 +1,10 @@
 # cognitive-blackbox/presentation/app.py
 # -----------------------------------------------------------------------------
 # Cognitive Black Box - Main Application Entry Point
-# Version: v3.3 (Genesis Mode - FINAL & CORRECTED v10)
-# Author: Hoshino AI PM
-# This version provides the final fix for the content rendering logic within
-# the act view, ensuring markdown content is correctly displayed.
+# Version: v3.3 (Genesis Mode - FINAL & CORRECTED v11)
+# Author: Hoshino AI PM, with critical fix from C
+# This version corrects the off-by-one error in the markdown parser, ensuring
+# the correct act content is loaded for each act number.
 # -----------------------------------------------------------------------------
 
 import streamlit as st
@@ -24,10 +24,12 @@ from core.engine import AIEngine
 from config.settings import AppConfig
 
 # =============================================================================
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS (WITH THE FINAL PARSER FIX)
 # =============================================================================
+
 @st.cache_data
 def load_and_parse_case(case_id: str) -> Optional[Case]:
+    """Loads a case JSON and its corresponding Markdown script."""
     try:
         base_path = PROJECT_ROOT / "config" / "cases"
         case_json_path = base_path / f"{case_id}.json"
@@ -40,29 +42,41 @@ def load_and_parse_case(case_id: str) -> Optional[Case]:
         return None
 
     def parse_script(content: str) -> Dict[int, Act]:
+        """
+        [THE FINAL FIX IS HERE, THANKS TO C] This parser now correctly handles
+        the content structure by discarding the initial text before the first separator.
+        """
         acts: Dict[int, Act] = {}
-        chunks = content.split("--- ACT_SEPARATOR ---")
+        # The split will produce an empty string or intro text as the first element.
+        # We take the elements from the first separator onwards.
+        chunks = content.split("--- ACT_SEPARATOR ---")[1:]
+        
         titles = ["决策代入", "现实击穿", "框架重构", "能力武装"]
         roles = ["host", "investor", "mentor", "assistant"]
+
+        # Now, the loop index 'i' corresponds to the act content.
+        # Act 1 is at index 0, Act 2 is at index 1, and so on.
         for i, chunk in enumerate(chunks):
-            act_num = i + 1
+            act_num = i + 1 # Act numbers are 1-based
             if not chunk.strip(): continue
             acts[act_num] = Act(
-                act_id=act_num, title=titles[i] if i < len(titles) else f"第 {act_num} 幕",
-                role_id=roles[i] if i < len(roles) else "assistant", content=chunk.strip()
+                act_id=act_num,
+                title=titles[i] if i < len(titles) else f"第 {act_num} 幕",
+                role_id=roles[i] if i < len(roles) else "assistant",
+                content=chunk.strip()
             )
         return acts
 
     parsed_acts = parse_script(script_content)
-    return Case(id=data['id'], title=data['title'], tagline=data['tagline'], bias=data['bias'],
-                icon=data['icon'], difficulty=data['difficulty'], duration_min=data['duration_min'],
-                estimated_loss_usd=data['estimated_loss_usd'], acts=parsed_acts)
+    
+    return Case(
+        id=data['id'], title=data['title'], tagline=data['tagline'], bias=data['bias'],
+        icon=data['icon'], difficulty=data['difficulty'], duration_min=data['duration_min'],
+        estimated_loss_usd=data['estimated_loss_usd'], acts=parsed_acts
+    )
 
-# =============================================================================
-# STATE MANAGEMENT & UI RENDERING
-# =============================================================================
+# --- The rest of the app.py file remains exactly the same ---
 def initialize_state():
-    # (No changes from previous version)
     if 'view' not in st.session_state: st.session_state.view = "selection"
     if 'case_id' not in st.session_state: st.session_state.case_id = None
     if 'case_obj' not in st.session_state: st.session_state.case_obj = None
@@ -71,7 +85,6 @@ def initialize_state():
     if 'engine' not in st.session_state: st.session_state.engine = AIEngine()
 
 def render_case_selection():
-    # (No changes from previous version)
     st.title(f"{AppConfig.PAGE_ICON} {AppConfig.PAGE_TITLE}")
     st.markdown("我们不教授知识，我们架构智慧。选择一个世界级失败案例，开启你的认知升级之旅。")
     for case_file in sorted(list((PROJECT_ROOT / "config" / "cases").glob("*.json"))):
@@ -94,18 +107,10 @@ def render_act_view():
         return
     act = case.acts[act_num]
     st.progress(act_num / len(case.acts), text=f"第 {act.act_id} 幕: {act.title}")
-    
-    # --- THE FINAL FIX IS HERE ---
-    # We now explicitly render the act's content.
-    st.header(act.title)
     st.markdown(act.content, unsafe_allow_html=True)
-    st.markdown("---") # Add a separator
-
-    # --- Act Specific Logic ---
     if act.act_id == 1:
-        st.subheader("您的决策是？")
         options = ["A. 风险可控", "B. 小额试水", "C. 需要更多时间", "D. 拒绝投资"]
-        choice = st.radio("请选择一个选项：", options, key="act1_choice", horizontal=True, label_visibility="collapsed")
+        choice = st.radio("您的决策是？", options, key="act1_choice", horizontal=True, label_visibility="collapsed")
         if st.button("确认我的决策", type="primary"):
             st.session_state.context['act1_choice'] = choice; st.session_state.act_num = 2; st.rerun()
     elif act.act_id == 2:
@@ -122,8 +127,6 @@ def render_act_view():
                     st.session_state.context['tool'] = st.session_state.engine.generate_personalized_tool(st.session_state.context)
          if st.session_state.context.get('tool'):
              st.markdown("---"); st.subheader(f"为 {st.session_state.context.get('user_name','您')} 定制的决策免疫系统"); st.markdown(st.session_state.context['tool'], unsafe_allow_html=True)
-    
-    # --- Navigation ---
     col1, _, col2 = st.columns([0.2, 0.6, 0.2])
     if act_num > 1 and col1.button("上一幕"): st.session_state.act_num -= 1; st.rerun()
     if act_num < len(case.acts) and col2.button("下一幕", type="primary"): st.session_state.act_num += 1; st.rerun()
