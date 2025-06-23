@@ -446,7 +446,7 @@ class ContentLoader:
 # =============================================================================
 
 def render_case_selection():
-    """渲染案例选择页面 - v4.1重构版本"""
+    """渲染案例选择页面 - v4.1重构版本 + CXO-01优化"""
     sm = get_state_manager()
     
     # 调试开关 - 使用新的状态管理
@@ -478,6 +478,10 @@ def render_case_selection():
             with col2:
                 st.subheader(case_data.get('title'))
                 st.caption(f"{case_data.get('tagline')} | 认知偏误: {', '.join(case_data.get('bias', []))}")
+                
+                # CXO-01: 新增框架显示 - "价值前置"优化
+                framework = case_data.get('framework', '通用决策框架')
+                st.caption(f"💡 您将掌握：**{framework}**")
                 
                 info_col1, info_col2, info_col3 = st.columns(3)
                 with info_col1:
@@ -551,17 +555,38 @@ def render_act_view():
 # =============================================================================
 
 def render_act1_interaction():
-    """第一幕的交互逻辑 - v4.1重构版本"""
+    """第一幕的交互逻辑 - v4.1重构版本 + CXO-02优化"""
     sm = get_state_manager()
     
     st.subheader("🤔 您的决策是？")
     
-    options = [
-        "A. 风险可控，值得投资",
-        "B. 小额试水，观察情况", 
-        "C. 需要更多时间研究",
-        "D. 直接拒绝投资"
-    ]
+    # CXO-02: 动态加载案例专属选项 - "语境增强"优化
+    case = sm.current_case_obj
+    if case and hasattr(case, 'acts') and case.acts:
+        # 从案例配置中动态加载选项
+        # 注意：这里需要通过ContentLoader获取原始JSON数据
+        case_id = sm.get_current_case_id()
+        cases_metadata = ContentLoader.get_all_cases()
+        current_case_metadata = next((c for c in cases_metadata if c.get('id') == case_id), None)
+        
+        if current_case_metadata and 'act_1_options' in current_case_metadata:
+            options = current_case_metadata['act_1_options']
+        else:
+            # 保留原有的通用选项作为fallback
+            options = [
+                "A. 风险可控，值得投资",
+                "B. 小额试水，观察情况", 
+                "C. 需要更多时间研究",
+                "D. 直接拒绝投资"
+            ]
+    else:
+        # 保留原有的通用选项作为fallback
+        options = [
+            "A. 风险可控，值得投资",
+            "B. 小额试水，观察情况", 
+            "C. 需要更多时间研究",
+            "D. 直接拒绝投资"
+        ]
     
     choice = st.radio(
         "请选择一个选项：",
