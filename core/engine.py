@@ -45,10 +45,10 @@ class AIEngine:
             logging.error(self.error_message)
 
     def _initialize_with_premium_model(self):
-        """升级规约：优先使用Gemini 2.5 Pro，体验驱动的模型选择"""
+        """恢复高质量优先策略：优先使用最佳模型，确保用户体验"""
         model_priority = [
             'gemini-2.5-pro',          # 主要模型：最高质量
-            'gemini-1.5-pro',          # 降级选项：稳定备选
+            'gemini-1.5-pro',          # 备选选项：稳定高质量
             'gemini-1.5-flash'         # 最终备选：确保可用性
         ]
         
