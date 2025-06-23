@@ -271,12 +271,13 @@ class StateManager:
     
     @staticmethod
     def switch_to_case(case_id: str):
-        """切换到指定案例的第一幕"""
+        """切换到指定案例的第一幕 - 关键修复：传递case_id到context"""
         st.session_state.view = "act"
         st.session_state.case_id = case_id
         st.session_state.act_num = 1
-        st.session_state.context = {}
-        print(f"🔄 切换到案例: {case_id}")
+        # 关键修复：清除旧上下文并设置新的case_id
+        st.session_state.context = {'case_id': case_id}  # 确保AI知道当前案例
+        print(f"🔄 切换到案例: {case_id}, 上下文已重置")
     
     @staticmethod
     def switch_to_selection():
@@ -406,7 +407,7 @@ def render_act_view():
     render_navigation(case, act_num)
 
 def render_act1_interaction():
-    """第一幕的交互逻辑 - 保持原有"""
+    """第一幕的交互逻辑 - 确保case_id被保留"""
     st.subheader("🤔 您的决策是？")
     
     options = [
@@ -425,8 +426,13 @@ def render_act1_interaction():
     )
     
     if st.button("✅ 确认我的决策", type="primary", key="confirm_act1_choice"):
-        st.session_state.context['act1_choice'] = choice
-        print(f"✅ 用户选择: {choice}")
+        # 关键修复：保留case_id，只更新选择
+        current_case_id = st.session_state.context.get('case_id', st.session_state.case_id)
+        st.session_state.context = {
+            'case_id': current_case_id,
+            'act1_choice': choice
+        }
+        print(f"✅ 用户选择: {choice}, 案例: {current_case_id}")
         StateManager.next_act()
         st.rerun()
 
