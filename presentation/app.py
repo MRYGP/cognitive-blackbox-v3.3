@@ -1,1 +1,117 @@
+# presentation/app.py
+import streamlit as st
+import sys
+import re
+from pathlib import Path
+import json
+from typing import Dict
 
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+
+from core.models import Act, Case
+from core.engine import AIEngine
+from config.settings import AppConfig
+
+@st.cache_data
+def load_and_parse_case(case_id: str) -> Case:
+    def parse_script(script_content: str) -> Dict[int, Act]:
+        acts: Dict[int, Act] = {}
+        num_map = {"一": 1, "二": 2, "三": 3, "四": 4}
+        chunks = script_content.split("## 🎭 ")[1:]
+        for i, chunk in enumerate(chunks):
+            lines = chunk.split('\n')
+            header = lines[0]
+            content = '\n'.join(lines[1:]).strip()
+            match = re.search(r'第([一二三四\d])幕\s*：\s*(.*)', header)
+            if not match: continue
+            num_str, title = match.groups()
+            title = title.strip()
+            act_num = num_map.get(num_str, int(num_str) if num_str.isdigit() else 0)
+            if act_num == 0: continue
+            role_id = "assistant"
+            if "代入" in title: role_id = "host"
+            if "击穿" in title: role_id = "investor"
+            if "重构" in title: role_id = "mentor"
+            acts[act_num] = Act(act_id=act_num, title=title, role_id=role_id, content=content)
+        return acts
+
+    base_path = project_root / "config" / "cases"
+    case_json_path = base_path / f"{case_id}.json"
+    with open(case_json_path, 'r', encoding='utf-8') as f: data = json.load(f)
+    script_file_path = base_path / data['script_file']
+    with open(script_file_path, 'r', encoding='utf-8') as f: script_content = f.read()
+    parsed_acts = parse_script(script_content)
+    return Case(id=data['id'], title=data['title'], tagline=data['tagline'], bias=data['bias'], icon=data['icon'], difficulty=data['difficulty'], duration_min=data['duration_min'], estimated_loss_usd=data['estimated_loss_usd'], acts=parsed_acts)
+
+def initialize_state():
+    if 'view' not in st.session_state: st.session_state.view = "selection"
+    if 'case_id' not in st.session_state: st.session_state.case_id = None
+    if 'case_obj' not in st.session_state: st.session_state.case_obj = None
+    if 'act_num' not in st.session_state: st.session_state.act_num = 1
+    if 'context' not in st.session_state: st.session_state.context = {}
+    if 'engine' not in st.session_state: st.session_state.engine = AIEngine()
+
+def render_case_selection():
+    st.title(f"{AppConfig.PAGE_ICON} {AppConfig.PAGE_TITLE}")
+    st.markdown("我们不教授知识，我们架构智慧。选择一个世界级失败案例，开启你的认知升级之旅。")
+    cases_dir = project_root / "config" / "cases"
+    for case_file in sorted(list(cases_dir.glob("*.json"))):
+        with open(case_file, 'r', encoding='utf-8') as f: data = json.load(f)
+        with st.container(border=True):
+            col1, col2 = st.columns([0.1, 0.9]); col1.header(data.get('icon', '❓'))
+            with col2:
+                st.subheader(data.get('title')); st.caption(f"{data.get('tagline')} | 认知偏误: {', '.join(data.get('bias', []))}")
+            if st.button(f"进入 **{data.get('title')}** 体验", key=f"btn_{data.get('id')}"):
+                st.session_state.view, st.session_state.case_id = "act", data['id']
+                st.session_state.act_num, st.session_state.context = 1, {}
+                st.rerun()
+
+def render_act_view():
+    case: Case = st.session_state.case_obj
+    act_num = st.session_state.act_num
+    if not case or act_num not in case.acts:
+        st.error("无法加载当前幕的内容，请返回案例选择重试。")
+        if st.button("返回案例选择"): st.session_state.view, st.session_state.case_id, st.session_state.case_obj = "selection", None, None; st.rerun()
+        return
+    act = case.acts[act_num]
+    st.progress(act_num / len(case.acts), text=f"第 {act.act_id} 幕: {act.title}")
+    with st.expander(f"**第 {act.act_id} 幕: {act.title}**", expanded=True):
+        st.markdown(act.content, unsafe_allow_html=True)
+    if act.act_id == 1:
+        options = ["A. 风险可控", "B. 小额试水", "C. 需要更多时间", "D. 拒绝投资"]
+        choice = st.radio("您的决策是？", options, key="act1_choice", horizontal=True)
+        if st.button("确认我的决策", type="primary"):
+            st.session_state.context['act1_choice'] = choice; st.session_state.act_num = 2; st.rerun()
+    elif act.act_id == 2:
+        if 'question' not in st.session_state.context:
+            with st.spinner("AI正在分析您的决策..."):
+                st.session_state.context['question'] = st.session_state.engine.generate_personalized_question(st.session_state.context)
+        st.warning(f"**AI质疑:** {st.session_state.context.get('question')}")
+    elif act.act_id == 4:
+         with st.form("tool_form"):
+            st.subheader("个性化决策工具生成"); name = st.text_input("您的姓名/昵称"); principle = st.text_area("您的核心决策原则")
+            if st.form_submit_button("生成我的专属工具", type="primary"):
+                st.session_state.context['user_name'], st.session_state.context['user_principle'] = name, principle
+                with st.spinner("AI导师正在为您定制免疫系统..."):
+                    st.session_state.context['tool'] = st.session_state.engine.generate_personalized_tool(st.session_state.context)
+         if st.session_state.context.get('tool'):
+             st.markdown("---"); st.subheader(f"为 {st.session_state.context.get('user_name','您')} 定制的决策免疫系统"); st.markdown(st.session_state.context['tool'], unsafe_allow_html=True)
+    col1, _, col2 = st.columns([0.2, 0.6, 0.2])
+    if act_num > 1 and col1.button("上一幕"): st.session_state.act_num -= 1; st.rerun()
+    if act_num < len(case.acts) and col2.button("下一幕", type="primary"): st.session_state.act_num += 1; st.rerun()
+    st.markdown("---")
+    if st.button("返回案例选择"): st.session_state.view, st.session_state.case_id, st.session_state.case_obj = "selection", None, None; st.rerun()
+
+def main():
+    st.set_page_config(page_title=AppConfig.PAGE_TITLE, page_icon=AppConfig.PAGE_ICON, layout="wide")
+    initialize_state()
+    if st.session_state.view == "act" and st.session_state.case_id:
+        if st.session_state.case_obj is None or st.session_state.case_obj.id != st.session_state.case_id:
+            st.session_state.case_obj = load_and_parse_case(st.session_state.case_id)
+    if st.session_state.view == "selection": render_case_selection()
+    elif st.session_state.view == "act": render_act_view()
+
+if __name__ == "__main__":
+    main()
