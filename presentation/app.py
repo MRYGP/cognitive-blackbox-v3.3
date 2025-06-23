@@ -577,20 +577,45 @@ def render_act1_interaction():
         sm.advance_to_next_act()
 
 def render_act2_interaction_premium():
-    """第二幕的AI质疑逻辑 - v4.1重构版本"""
+    """第二幕的AI质疑逻辑 - v4.1强制诊断版本"""
     sm = get_state_manager()
     
-    if not sm.get_context('ai_question'):
+    if not sm.get_context('ai_question_result'):
         with st.spinner("🤖 Damien正在分析您的决策逻辑..."):
             try:
-                question = sm.ai_engine.generate_personalized_question(sm.get_full_context())
-                sm.update_context('ai_question', question)
+                result = sm.ai_engine.generate_personalized_question(sm.get_full_context())
+                sm.update_context('ai_question_result', result)
                 sm.show_challenge_modal()
             except Exception as e:
-                sm.update_context('ai_question', "这个'完美'的机会，最让你不安的是什么？")
+                # 创建失败结果
+                result = {
+                    "success": False,
+                    "content": "",
+                    "error_message": f"AI调用异常: {str(e)}",
+                    "fallback_content": "这个'完美'的机会，最让你不安的是什么？"
+                }
+                sm.update_context('ai_question_result', result)
                 sm.show_challenge_modal()
     
-    question = sm.get_context('ai_question')
+    result = sm.get_context('ai_question_result')
+    
+    # 强制诊断显示
+    if sm.is_debug_mode():
+        with st.expander("🔍 AI质疑生成诊断", expanded=False):
+            st.json({
+                "success": result.get("success", False),
+                "error_message": result.get("error_message"),
+                "model_used": result.get("model_used"),
+                "debug_info": result.get("debug_info", {})
+            })
+    
+    # 确定显示的问题
+    if result.get("success"):
+        question = result.get("content", "")
+    else:
+        question = result.get("fallback_content", "这个'完美'的机会，最让你不安的是什么？")
+        if not sm.is_debug_mode():
+            st.warning("⚠️ AI质疑生成遇到技术问题，为您提供备选质疑")
     
     if sm.is_challenge_modal_visible():
         show_ai_challenge_modal(question)
@@ -724,12 +749,29 @@ def render_act3_interaction_doubt_model():
                     with st.spinner("🧠 Athena导师正在分析您的思考..."):
                         try:
                             # 生成AI反馈
-                            feedback = sm.ai_engine.generate_athena_feedback(
+                            result = sm.ai_engine.generate_athena_feedback(
                                 context=sm.get_full_context(),
                                 step_id=current_step['id'],
                                 step_title=current_step['title'],
                                 user_input=answer.strip()
                             )
+                            
+                            # 强制诊断显示（调试模式）
+                            if sm.is_debug_mode():
+                                st.json({
+                                    "success": result.get("success", False),
+                                    "error_message": result.get("error_message"),
+                                    "model_used": result.get("model_used"),
+                                    "debug_info": result.get("debug_info", {})
+                                })
+                            
+                            # 确定使用的反馈内容
+                            if result.get("success"):
+                                feedback = result.get("content", "")
+                            else:
+                                feedback = result.get("fallback_content", "很好的思考！")
+                                if not sm.is_debug_mode():
+                                    st.warning("⚠️ AI反馈生成遇到技术问题，为您提供备选反馈")
                             
                             # 设置反馈状态
                             sm.set_feedback(feedback)
@@ -806,17 +848,52 @@ def render_act4_interaction_premium():
                 
                 with st.spinner("🤖 Athena正在为您定制终身决策免疫系统..."):
                     try:
-                        tool = sm.ai_engine.generate_personalized_tool(sm.get_full_context())
-                        sm.update_context('personalized_tool', tool)
+                        result = sm.ai_engine.generate_personalized_tool(sm.get_full_context())
+                        sm.update_context('personalized_tool_result', result)
                     except Exception as e:
-                        st.error(f"工具生成失败: {e}")
+                        # 创建失败结果
+                        result = {
+                            "success": False,
+                            "content": "",
+                            "error_message": f"AI工具生成异常: {str(e)}",
+                            "fallback_content": sm.ai_engine._get_premium_fallback_tool(sm.get_full_context(), sm.get_current_case_id())
+                        }
+                        sm.update_context('personalized_tool_result', result)
     
-    # 使用高级报告渲染器
-    if sm.get_context('personalized_tool'):
+    # 使用强制诊断渲染器
+    if sm.get_context('personalized_tool_result'):
         st.markdown("---")
-        st.subheader("🎯 您的专属认知免疫系统已生成")
         
-        tool_content = sm.get_context('personalized_tool')
+        result = sm.get_context('personalized_tool_result')
+        
+        # 强制诊断显示（始终显示，不只是调试模式）
+        with st.expander("🔍 AI工具生成诊断报告", expanded=False):
+            st.write("### 生成状态")
+            if result.get("success"):
+                st.success("✅ AI成功生成个性化工具")
+            else:
+                st.error(f"❌ AI生成失败: {result.get('error_message', '未知错误')}")
+                st.info("📋 已自动使用高质量备选工具")
+            
+            st.write("### 技术详情")
+            st.json({
+                "成功状态": result.get("success", False),
+                "错误信息": result.get("error_message"),
+                "使用模型": result.get("model_used"),
+                "输入诊断": result.get("input_diagnostics", {}),
+                "案例信息": result.get("case_info", {}),
+                "调试信息": result.get("debug_info", {})
+            })
+        
+        # 确定显示的内容
+        if result.get("success"):
+            st.subheader("🎯 您的专属认知免疫系统（AI生成）")
+            tool_content = result.get("content", "")
+        else:
+            st.subheader("🎯 您的专属认知免疫系统（备选版本）")
+            st.info("由于AI生成遇到技术问题，我们为您提供了一份高质量的备选工具。")
+            tool_content = result.get("fallback_content", "")
+        
         user_name = sm.get_context('user_name', '用户')
         
         parse_and_render_premium_report(tool_content, user_name)
@@ -930,11 +1007,12 @@ def render_debug_panel():
         with col3:
             if st.button("🧪 测试AI引擎"):
                 with st.spinner("测试中..."):
-                    result, success = sm.ai_engine._generate("请回答'AI引擎正常'")
-                    if success:
-                        st.success(f"✅ AI测试成功: {result}")
+                    result = sm.ai_engine._generate("请回答'AI引擎正常'")
+                    if result.get("success"):
+                        st.success(f"✅ AI测试成功: {result.get('content', '')}")
                     else:
-                        st.error(f"❌ AI测试失败: {result}")
+                        st.error(f"❌ AI测试失败: {result.get('error_message', '未知错误')}")
+                        st.json(result.get("debug_info", {}))
         
         with col4:
             if st.button("🎯 跳到第三幕"):
