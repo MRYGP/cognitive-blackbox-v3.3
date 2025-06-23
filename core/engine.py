@@ -19,7 +19,7 @@ class AIEngine:
             if not api_key: raise ValueError("API Key not found in st.secrets")
             genai.configure(api_key=api_key)
             # Let's stick to a stable, well-tested model for now
-            self.model = genai.GenerativeModel('gemini-1.5-pro-latest') 
+            self.model = genai.GenerativeModel('gemini-2.5-pro') 
         except Exception as e:
             print(f"AI Engine Init Warning: {e}. Running in NO-AI mode.")
 
