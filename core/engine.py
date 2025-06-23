@@ -1,4 +1,4 @@
-# core/engine.py - 智能模型降级版本
+# core/engine.py - 案例感知版本 (修复上下文混乱)
 import streamlit as st
 import google.generativeai as genai
 from typing import Dict, Any, Tuple
@@ -13,7 +13,7 @@ class AIEngine:
         self.is_initialized = False
         self.error_message = None
         self.debug_info = {}
-        self.current_model = None  # 新增：跟踪当前使用的模型
+        self.current_model = None
         self._initialize()
 
     def _initialize(self):
@@ -45,7 +45,6 @@ class AIEngine:
 
     def _initialize_with_fallback(self):
         """智能模型初始化 - 按配额友好程度排序"""
-        # 模型选择优先级：从最便宜/配额最宽松到最昂贵
         model_priority = [
             'gemini-1.5-flash',        # 最便宜，配额最宽松
             'gemini-1.5-pro',          # 中等价格和配额
@@ -80,7 +79,6 @@ class AIEngine:
             self.debug_info['last_call'] = call_debug
             return self.error_message, False
         
-        # 尝试当前模型，如果配额不足则降级
         result = self._try_generate_with_fallback(prompt, call_debug)
         self.debug_info['last_call'] = call_debug
         return result
@@ -88,7 +86,6 @@ class AIEngine:
     def _try_generate_with_fallback(self, prompt: str, call_debug: Dict) -> Tuple[str, bool]:
         """尝试生成，遇到配额问题时自动降级模型"""
         
-        # 模型降级顺序
         fallback_models = [
             self.current_model,        # 当前模型
             'gemini-1.5-flash',        # 降级到Flash
@@ -124,13 +121,10 @@ class AIEngine:
                 # 检查是否是配额错误
                 if '429' in error_str or 'quota' in error_str.lower() or 'exceeded' in error_str.lower():
                     call_debug[f'quota_exceeded_{model_name}'] = True
-                    # 如果是配额错误，继续尝试下一个模型
                     continue
                 else:
-                    # 如果是其他错误，返回错误信息
                     return f"API调用异常: {e}", False
         
-        # 所有模型都失败了
         call_debug['all_models_failed'] = True
         return "所有可用模型的配额都已耗尽，请稍后重试", False
 
@@ -151,7 +145,6 @@ class AIEngine:
         call_debug['api_call_complete'] = 'API调用完成'
         call_debug['response_available'] = response is not None
         
-        # 详细的响应分析
         if response:
             call_debug['response_type'] = str(type(response))
             call_debug['has_parts'] = hasattr(response, 'parts') and bool(response.parts)
@@ -159,7 +152,6 @@ class AIEngine:
             call_debug['has_candidates'] = hasattr(response, 'candidates') and bool(response.candidates)
             call_debug['has_prompt_feedback'] = hasattr(response, 'prompt_feedback')
             
-            # 尝试获取文本
             if response.parts:
                 call_debug['parts_count'] = len(response.parts) if response.parts else 0
                 try:
@@ -170,14 +162,12 @@ class AIEngine:
                 except Exception as text_error:
                     call_debug['text_extraction_error'] = str(text_error)
             
-            # 检查安全过滤
             if hasattr(response, 'prompt_feedback'):
                 feedback = response.prompt_feedback
                 if hasattr(feedback, 'block_reason') and feedback.block_reason:
                     call_debug['block_reason'] = str(feedback.block_reason)
                     return f"内容被安全过滤拦截: {feedback.block_reason}", False
             
-            # 检查candidates
             if hasattr(response, 'candidates') and response.candidates:
                 candidate = response.candidates[0]
                 call_debug['candidate_available'] = True
@@ -202,7 +192,22 @@ class AIEngine:
             fallbacks = ["你真的确定这个判断是基于事实而非情感吗？", "从另一个角度看，这个决策最大的风险可能是什么？"]
             return random.choice(fallbacks)
         
-        prompt = f"""你是一位资深的金融风险分析师。一位投资者对麦道夫投资机会选择了"{context.get('act1_choice', '未知选择')}"。请用一句简短的话(不超过30字)质疑这个选择，让投资者重新思考。要求: 专业且尖锐, 直击要害, 避免说教。"""
+        # 新增：获取当前案例信息
+        case_id = context.get('case_id', 'unknown')
+        user_choice = context.get('act1_choice', '未知选择')
+        
+        # 根据不同案例生成不同的提示词
+        if case_id == 'madoff':
+            case_context = "麦道夫庞氏骗局，这是一个关于光环效应的案例"
+        elif case_id == 'lehman':
+            case_context = "雷曼兄弟倒闭，这是一个关于确认偏误的案例"
+        elif case_id == 'ltcm':
+            case_context = "LTCM崩溃，这是一个关于过度自信的案例"
+        else:
+            case_context = "金融投资案例"
+        
+        prompt = f"""你是一位资深的金融风险分析师。在{case_context}中，一位投资者选择了"{user_choice}"。请用一句简短的话(不超过30字)质疑这个选择，让投资者重新思考。要求: 专业且尖锐, 直击要害, 避免说教。"""
+        
         question, success = self._generate(prompt)
         return question if success else "你真的确定这个判断是基于事实而非情感吗？"
 
@@ -210,13 +215,81 @@ class AIEngine:
         if not self.is_initialized:
             return self._get_fallback_tool(context)
         
-        prompt = f"""请为用户"{context.get("user_name", "用户")}"创建一个光环效应免疫工具。用户信息: 姓名: {context.get("user_name", "用户")}, 决策原则: {context.get("user_principle", "理性决策")}, 麦道夫案例选择: {context.get("act1_choice", "未记录")}。请生成包含以下内容的Markdown格式工具: 1. 个人化欢迎语(包含姓名) 2. 3-4条决策检查清单 3. 光环效应预警信号 4. 紧急刹车机制。要求: 实用、简洁、200-300字。"""
+        # 新增：获取当前案例信息
+        case_id = context.get('case_id', 'unknown')
+        user_name = context.get("user_name", "用户")
+        user_principle = context.get("user_principle", "理性决策")
+        user_choice = context.get("act1_choice", "未记录")
+        
+        # 根据不同案例生成不同的工具
+        if case_id == 'madoff':
+            bias_type = "光环效应"
+            framework = "四维独立验证矩阵"
+            case_name = "麦道夫案例"
+        elif case_id == 'lehman':
+            bias_type = "确认偏误"
+            framework = "DOUBT思维模型"
+            case_name = "雷曼兄弟案例"
+        elif case_id == 'ltcm':
+            bias_type = "过度自信效应"
+            framework = "RISK思维模型"
+            case_name = "LTCM案例"
+        else:
+            bias_type = "认知偏误"
+            framework = "理性决策框架"
+            case_name = "当前案例"
+        
+        prompt = f"""请为用户"{user_name}"创建一个{bias_type}免疫工具。
+
+用户信息:
+- 姓名: {user_name}
+- 决策原则: {user_principle}  
+- {case_name}选择: {user_choice}
+
+请基于{framework}生成包含以下内容的Markdown格式工具:
+1. 个人化欢迎语(包含姓名和{bias_type})
+2. 3-4条针对{bias_type}的决策检查清单
+3. {bias_type}的特定预警信号
+4. 紧急刹车机制
+
+要求: 实用、简洁、200-300字，内容必须针对{bias_type}而不是其他认知偏误。"""
+
         tool, success = self._generate(prompt)
-        return tool if success else self._get_fallback_tool(context)
+        return tool if success else self._get_fallback_tool(context, case_id)
     
-    def _get_fallback_tool(self, context: Dict[str, Any]) -> str:
+    def _get_fallback_tool(self, context: Dict[str, Any], case_id: str = 'unknown') -> str:
         user_name = context.get('user_name', '您')
-        return f"""## 🛡️ {user_name}的光环效应免疫系统
+        
+        # 根据案例提供不同的后备工具
+        if case_id == 'lehman':
+            return f"""## 🛡️ {user_name}的确认偏误免疫系统
+### DOUBT思维检查清单
+- [ ] **D - Devil's Advocate**: 找人专门反驳你的观点
+- [ ] **O - Opposite Evidence**: 主动搜集反向证据
+- [ ] **U - Uncertainty Mapping**: 承认和量化不确定性
+- [ ] **B - Base Rate**: 重视基础概率和历史数据
+- [ ] **T - Time Horizon**: 扩展时间视野看问题
+### ⚠️ 确认偏误预警信号
+- 只关注支持自己观点的信息
+- 忽视或曲解反面证据
+- 过分相信历史经验
+### 🚨 紧急刹车机制
+**当出现选择性信息收集时，立即停止决策，强制寻找反面证据。**"""
+        elif case_id == 'ltcm':
+            return f"""## 🛡️ {user_name}的过度自信免疫系统
+### RISK思维检查清单
+- [ ] **R - Reality Check**: 现实检验，质疑模型假设
+- [ ] **I - Ignorance Mapping**: 承认无知，识别知识盲区
+- [ ] **S - Scenario Planning**: 情景规划，考虑极端情况
+- [ ] **K - Kill Switch**: 设置止损机制
+### ⚠️ 过度自信预警信号
+- 过分相信模型预测
+- 忽视小概率极端事件
+- 认为自己比市场更聪明
+### 🚨 紧急刹车机制
+**当模型预测与现实出现偏差时，立即重新评估所有假设。**"""
+        else:  # madoff 或默认
+            return f"""## 🛡️ {user_name}的光环效应免疫系统
 ### 决策检查清单
 - [ ] **权威分离法**: 区分职位权威vs专业权威
 - [ ] **透明度测试**: 所有信息是否完全透明？
