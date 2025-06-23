@@ -603,7 +603,7 @@ def render_act2_interaction_premium():
         st.info(f"🔄 回顾质疑：{question}")
 
 def render_act3_interaction_doubt_model():
-    """第三幕的DOUBT模型互动 - v4.1全新实现"""
+    """第三幕的DOUBT模型互动 - v4.1 AI反馈增强版"""
     sm = get_state_manager()
     
     # DOUBT模型的5个步骤
@@ -644,20 +644,23 @@ def render_act3_interaction_doubt_model():
     
     st.markdown('<div class="doubt-progress">', unsafe_allow_html=True)
     st.markdown(f"### 🛡️ DOUBT思维模型 - 智慧武器库")
-    st.markdown(f"**解锁进度: {current_stage}/5** | 构建您的认知防护盾")
+    st.markdown(f"**解锁进度: {current_stage}/5** | 与AI导师Athena的智慧对话")
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # 显示已完成的步骤
+    # 显示已完成的步骤（包含AI反馈）
     for i in range(current_stage):
         step = doubt_steps[i]
         answer = sm.get_context(f'doubt_{step["id"]}', '未记录')
+        feedback = sm.get_context(f'feedback_{step["id"]}', '')
         
         st.markdown('<div class="doubt-completed">', unsafe_allow_html=True)
         with st.expander(f"✅ {step['id']} - {step['title']} (已完成)", expanded=False):
             st.write(f"**您的反思:** {answer}")
+            if feedback:
+                st.info(f"🧠 **Athena导师点评:** {feedback}")
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # 当前步骤
+    # 当前步骤的交互逻辑
     if current_stage < len(doubt_steps):
         current_step = doubt_steps[current_stage]
         
@@ -665,30 +668,84 @@ def render_act3_interaction_doubt_model():
         st.markdown('<div class="doubt-step">', unsafe_allow_html=True)
         st.subheader(f"🎯 步骤 {current_stage + 1}: {current_step['id']} - {current_step['title']}")
         
-        with st.form(f"doubt_step_{current_step['id']}"):
-            st.markdown(current_step['question'])
+        # 检查是否正在显示AI反馈
+        if sm.is_showing_feedback():
+            # 显示AI反馈阶段
+            user_answer = sm.get_context(f'doubt_{current_step["id"]}', '')
+            feedback = sm.get_current_feedback()
             
-            answer = st.text_area(
-                "您的深度思考:",
-                placeholder=current_step['placeholder'],
-                height=120,
-                key=f"doubt_answer_{current_step['id']}"
-            )
+            st.success(f"✅ 您的答案已记录：")
+            st.write(f"*{user_answer}*")
             
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.markdown("💡 **提示**: 请诚实面对自己的认知盲点，这是构建智慧防护盾的关键。")
-            with col2:
-                submitted = st.form_submit_button(f"🔒 锁定 {current_step['id']} 符文", type="primary")
+            st.markdown("---")
             
-            if submitted and answer.strip():
-                sm.update_context(f'doubt_{current_step["id"]}', answer.strip())
+            # Athena导师反馈区域
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       color: white; padding: 20px; border-radius: 15px; margin: 15px 0;">
+                <h4>🧠 AI导师 Athena 的智慧点评</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.info(feedback)
+            
+            # 继续按钮
+            if st.button(f"⚡ 继续解锁下一个符文", type="primary", key=f"continue_after_feedback_{current_step['id']}"):
+                # 保存反馈到上下文
+                sm.update_context(f'feedback_{current_step["id"]}', feedback)
+                # 清除反馈状态并进入下一阶段
+                sm.clear_feedback()
                 sm.advance_sub_stage()
-                st.success(f"✅ {current_step['title']} 符文已解锁！")
-                time.sleep(1)  # 短暂停顿增强仪式感
                 st.rerun()
-            elif submitted:
-                st.error("请输入您的深度思考再继续")
+        
+        else:
+            # 显示输入阶段
+            with st.form(f"doubt_step_{current_step['id']}"):
+                st.markdown(current_step['question'])
+                
+                answer = st.text_area(
+                    "您的深度思考:",
+                    placeholder=current_step['placeholder'],
+                    height=120,
+                    key=f"doubt_answer_{current_step['id']}"
+                )
+                
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown("💡 **提示**: 请诚实面对自己的认知盲点，Athena导师将为您提供个性化指导。")
+                with col2:
+                    submitted = st.form_submit_button(f"🔒 锁定 {current_step['id']} 符文", type="primary")
+                
+                if submitted and answer.strip():
+                    # 保存用户答案
+                    sm.update_context(f'doubt_{current_step["id"]}', answer.strip())
+                    
+                    # 显示加载状态
+                    with st.spinner("🧠 Athena导师正在分析您的思考..."):
+                        try:
+                            # 生成AI反馈
+                            feedback = sm.ai_engine.generate_athena_feedback(
+                                context=sm.get_full_context(),
+                                step_id=current_step['id'],
+                                step_title=current_step['title'],
+                                user_input=answer.strip()
+                            )
+                            
+                            # 设置反馈状态
+                            sm.set_feedback(feedback)
+                            
+                            # 重新渲染页面显示反馈
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"AI反馈生成失败: {e}")
+                            # 使用备选反馈
+                            fallback_feedback = f"很好的思考！您对{current_step['title']}的理解展现了深度的自我反思能力。"
+                            sm.set_feedback(fallback_feedback)
+                            st.rerun()
+                
+                elif submitted:
+                    st.error("请输入您的深度思考再继续")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -703,12 +760,16 @@ def render_act3_interaction_doubt_model():
             
             for step in doubt_steps:
                 answer = sm.get_context(f'doubt_{step["id"]}', '未记录')
+                feedback = sm.get_context(f'feedback_{step["id"]}', '')
+                
                 st.markdown(f"#### {step['id']} - {step['title']}")
-                st.info(answer)
+                st.write(f"**您的思考:** {answer}")
+                if feedback:
+                    st.info(f"**Athena导师点评:** {feedback}")
                 st.markdown("---")
         
         st.markdown("### 🚀 恭喜解锁认知新层次！")
-        st.markdown("您已经具备了系统性的**反向思维能力**，这将成为您在未来决策中的核心竞争优势。")
+        st.markdown("您已经具备了系统性的**反向思维能力**，并得到了AI导师Athena的专业指导。这将成为您在未来决策中的核心竞争优势。")
         
         if st.button("⚡ 继续前往第四幕：获取专属AI工具", type="primary", key="doubt_complete_btn"):
             sm.advance_to_next_act()
@@ -816,9 +877,16 @@ def render_debug_panel():
             
             st.write("**DOUBT模型进度:**")
             doubt_progress = {}
+            feedback_progress = {}
             for step_id in ['D', 'O', 'U', 'B', 'T']:
                 doubt_progress[f'doubt_{step_id}'] = sm.get_context(f'doubt_{step_id}', None) is not None
-            st.json(doubt_progress)
+                feedback_progress[f'feedback_{step_id}'] = sm.get_context(f'feedback_{step_id}', None) is not None
+            st.json({
+                'answers': doubt_progress,
+                'feedbacks': feedback_progress,
+                'current_feedback_visible': sm.is_showing_feedback(),
+                'current_feedback_content': sm.get_current_feedback()[:50] + '...' if len(sm.get_current_feedback()) > 50 else sm.get_current_feedback()
+            })
         
         with col2:
             st.write("**系统状态:**")
