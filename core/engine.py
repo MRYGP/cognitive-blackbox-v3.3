@@ -1,4 +1,4 @@
-# core/engine.py - 体验驱动迭代版本
+# core/engine.py - 体验驱动迭代版本 + v4.1 AI反馈增强
 # 从"能用"到"卓越"的大脑升级
 import streamlit as st
 import google.generativeai as genai
@@ -167,6 +167,62 @@ class AIEngine:
             'model_type': str(type(self.model)) if self.model else None
         }
 
+    def generate_personalized_question(self, context: Dict[str, Any]) -> str:
+        """生成个性化质疑问题 - Damien角色"""
+        case_id = context.get('case_id', 'unknown')
+        user_choice = context.get('act1_choice', '未记录')
+        
+        prompt = f"""你是一位名叫Damien的对冲基金经理，专门以尖锐质疑著称。用户在{case_id}案例中选择了"{user_choice}"。
+        
+请生成一个不超过40字符的尖锐质疑问题，让用户重新思考自己的决策。要求：
+1. 直接针对用户的选择
+2. 语气尖锐但专业
+3. 一句话，40字符以内"""
+        
+        question, success = self._generate(prompt)
+        return question if success else "这个'完美'的机会，最让你不安的是什么？"
+
+    def generate_athena_feedback(self, context: Dict[str, Any], step_id: str, step_title: str, user_input: str) -> str:
+        """生成Athena导师的智慧反馈 - v4.1新增功能"""
+        case_id = context.get('case_id', 'unknown')
+        
+        # 根据案例确定偏误类型
+        if case_id == 'madoff':
+            bias_type = "光环效应"
+        elif case_id == 'lehman':
+            bias_type = "确认偏误"
+        elif case_id == 'ltcm':
+            bias_type = "过度自信效应"
+        else:
+            bias_type = "认知偏误"
+        
+        prompt = f"""你是一位名叫Athena的AI智慧导师，温暖而睿智。一个学生正在学习对抗{bias_type}，刚刚为DOUBT模型中的"{step_title}"概念，写下了他的思考：
+
+"{user_input}"
+
+请用一句充满智慧和鼓励的话来点评他的思考。要求：
+1. 既要肯定他的努力，又要启发更深层思考
+2. 温暖鼓励的语调，体现导师的智慧
+3. 控制在50字以内
+4. 不要重复用户的原话
+
+示例风格："这种反思很有价值！你已经开始用批判性思维审视表面的完美，这正是突破{bias_type}的关键第一步。"""
+
+        feedback, success = self._generate(prompt)
+        
+        if success:
+            return feedback
+        else:
+            # 根据步骤提供备选反馈
+            fallback_feedbacks = {
+                'D': f"很好的批判性思考！质疑看似完美的机会，正是对抗{bias_type}的第一步。",
+                'O': f"优秀的警觉性！寻找反向证据能帮你避开{bias_type}的陷阱。",
+                'U': f"诚实面对不确定性需要勇气，这种自省正是智慧决策的基础。",
+                'B': f"用概率思维看待机会，这种理性分析能有效防范{bias_type}。",
+                'T': f"从长远视角审视决策，这种时间维度的思考展现了真正的智慧。"
+            }
+            return fallback_feedbacks.get(step_id, f"很好的思考！继续保持这种理性分析的精神。")
+
     def generate_personalized_tool(self, context: Dict[str, Any]) -> str:
         """升级规约：案例感知的Athena角色工具生成"""
         if not self.is_initialized:
@@ -274,10 +330,3 @@ TASK: Generate a personalized "Cognitive Immune System" memo in Markdown format.
 ## ⚙️ 通用反制工具箱 - {framework}
 
 {tools}"""
-
-    def generate_personalized_question(self, context: Dict[str, Any]) -> str:
-        """Refuse to invest, a good question is: "Your intuition is sharp, but can you clearly state which 'red flag' in this 'perfect' opportunity makes you most uneasy?"
-        Now, generate a new, unique question for the user's decision. Your answer must be a single question, no longer than 40 characters."""
-
-        question, success = self._generate(prompt)
-        return question if success else "What makes you most uneasy about this 'perfect' opportunity?"
