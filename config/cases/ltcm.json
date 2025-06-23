@@ -1,1 +1,15 @@
-
+{
+  "id": "ltcm",
+  "title": "LTCM：天才们的陨落",
+  "tagline": "“诺贝尔奖天团”的覆灭",
+  "bias": [
+    "过度自信",
+    "模型迷信",
+    "黑天鹅忽视"
+  ],
+  "icon": "🧠",
+  "difficulty": "专家",
+  "duration_min": 18,
+  "estimated_loss_usd": "46亿",
+  "script_file": "ltcm_script.md"
+}
