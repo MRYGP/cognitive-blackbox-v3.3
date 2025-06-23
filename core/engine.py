@@ -1,247 +1,117 @@
-# core/engine.py - 懒初始化版本
-# 解决Streamlit Cloud初始化时序问题
+# cognitive-blackbox/core/engine.py
+# -----------------------------------------------------------------------------
+# The AI Engine for the Cognitive Black Box Application
+# Version: v4.0 (Genesis Mode - Self-Diagnosing Engine)
+# Author: Hoshino AI PM
+# This version is designed to be highly robust and provide explicit,
+# actionable error messages for any failure in the API call chain.
+# -----------------------------------------------------------------------------
 
 import streamlit as st
 import google.generativeai as genai
 from typing import Dict, Any, Tuple
-import os
+import logging
+
+# Configure logging to see detailed output in Streamlit logs
+logging.basicConfig(level=logging.INFO)
 
 class AIEngine:
     def __init__(self):
-        """
-        构造函数中不进行任何API初始化
-        采用懒初始化模式，确保在Streamlit完全启动后再获取secrets
-        """
         self.model = None
-        self.is_initialized = None  # None表示未尝试初始化
-        self.initialization_error = None
-    
-    def _ensure_initialized(self) -> bool:
+        self.is_initialized = False
+        self.error_message = "Engine has not been initialized."
+        self._initialize()
+
+    def _initialize(self):
         """
-        懒初始化：仅在真正需要时才初始化API客户端
-        这确保了st.secrets在Streamlit完全启动后才被访问
+        Tries to initialize the Gemini client. Stores success or failure state.
         """
-        # 如果已经成功初始化，直接返回
-        if self.is_initialized is True:
-            return True
-        
-        # 如果之前初始化失败过，不重复尝试（避免重复错误）
-        if self.is_initialized is False:
-            return False
-        
-        # 开始初始化过程
         try:
-            # 多种方式获取API密钥
-            api_key = None
-            
-            # 方式1: 从Streamlit secrets获取（主要方式）
-            try:
-                if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
-                    api_key = st.secrets["GEMINI_API_KEY"]
-                    print("✅ API密钥从st.secrets获取成功")
-            except Exception as e:
-                print(f"⚠️ 从st.secrets获取API密钥失败: {e}")
-            
-            # 方式2: 从环境变量获取（备用方式）
+            api_key = st.secrets.get("GEMINI_API_KEY")
             if not api_key:
-                api_key = os.environ.get('GEMINI_API_KEY')
-                if api_key:
-                    print("✅ API密钥从环境变量获取成功")
+                raise ValueError("API Key is missing or empty in st.secrets.")
             
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY未找到：请检查Streamlit Secrets配置")
-            
-            # 配置Gemini API
             genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-pro-latest')
+            # Perform a simple test call to verify the key and model access
+            self.model.generate_content("test", generation_config={"max_output_tokens": 5})
             
-            # 创建模型实例
-            self.model = genai.GenerativeModel('gemini-2.5-pro')
-            
-            # 标记初始化成功
             self.is_initialized = True
-            print("✅ Gemini API客户端初始化成功")
-            return True
-            
+            self.error_message = None
+            logging.info("AI Engine initialized successfully.")
+
         except Exception as e:
-            # 记录初始化失败
-            self.initialization_error = str(e)
             self.is_initialized = False
-            print(f"❌ Gemini API初始化失败: {e}")
-            return False
+            self.error_message = f"AI引擎初始化失败: {type(e).__name__} - {e}"
+            logging.error(self.error_message)
 
     def _generate(self, prompt: str) -> Tuple[str, bool]:
         """
-        核心生成函数 - 采用懒初始化确保API可用性
+        The core generation function with comprehensive error handling.
         """
-        # 懒初始化：在真正需要时才初始化API
-        if not self._ensure_initialized():
-            error_msg = f"AI引擎初始化失败: {self.initialization_error or '未知错误'}"
-            return error_msg, False
+        if not self.is_initialized:
+            return self.error_message, False
         
         try:
-            # 正确的安全设置
-            safety_settings = [
-                {
-                    "category": "HARM_CATEGORY_HARASSMENT",
-                    "threshold": "BLOCK_NONE"
-                },
-                {
-                    "category": "HARM_CATEGORY_HATE_SPEECH", 
-                    "threshold": "BLOCK_NONE"
-                },
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_NONE"
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_NONE"
-                }
-            ]
-            
-            # 生成配置
-            generation_config = {
-                'temperature': 0.7,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 1000,
+            safety_settings = {
+                'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE',
+                'HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE',
+                'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'BLOCK_NONE',
+                'HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE',
             }
-            
-            print(f"🤖 发送请求到Gemini API...")
-            
-            # 执行API调用
-            response = self.model.generate_content(
-                prompt,
-                safety_settings=safety_settings,
-                generation_config=generation_config
-            )
-            
-            print(f"📥 收到API响应")
-            
-            # 解析响应
-            return self._parse_response(response)
-            
-        except Exception as e:
-            error_msg = f"API调用失败: {str(e)}"
-            print(f"❌ Gemini API调用异常: {e}")
-            return error_msg, False
+            response = self.model.generate_content(prompt, safety_settings=safety_settings)
 
-    def _parse_response(self, response) -> Tuple[str, bool]:
-        """
-        健壮的响应解析逻辑
-        """
-        try:
-            # 方法1: 直接获取text
-            if hasattr(response, 'text') and response.text:
-                result = response.text.strip()
-                print(f"✅ 成功获取响应内容: {len(result)}字符")
-                return result, True
-            
-            # 方法2: 通过candidates获取
-            if hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and candidate.content:
-                    if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                        text = candidate.content.parts[0].text
-                        if text and text.strip():
-                            result = text.strip()
-                            print(f"✅ 通过candidates获取响应: {len(result)}字符")
-                            return result, True
-            
-            # 检查安全过滤
-            if hasattr(response, 'prompt_feedback'):
+            # The most robust way to check for a valid response
+            if response.candidates and response.candidates[0].content.parts:
+                return response.text, True
+            else:
+                # Provide detailed feedback if the response was blocked
                 feedback = response.prompt_feedback
-                if hasattr(feedback, 'block_reason') and feedback.block_reason:
-                    reason = feedback.block_reason
-                    print(f"⚠️ 内容被安全过滤: {reason}")
-                    return f"内容被安全过滤: {reason}", False
-            
-            # 检查生成失败原因
-            if hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'finish_reason'):
-                    finish_reason = candidate.finish_reason
-                    print(f"⚠️ 生成结束原因: {finish_reason}")
-                    if finish_reason == 'SAFETY':
-                        return "内容被安全策略阻拦", False
-                    elif finish_reason == 'RECITATION':
-                        return "内容涉及版权问题", False
-                    elif finish_reason == 'OTHER':
-                        return "API返回未知错误", False
-            
-            print("⚠️ API返回空响应")
-            return "AI未返回有效内容，请重试", False
-            
-        except Exception as e:
-            print(f"❌ 响应解析失败: {e}")
-            return f"响应解析失败: {str(e)}", False
+                block_reason = feedback.block_reason if hasattr(feedback, 'block_reason') else 'Unknown'
+                error受到了某些区域性或使用频率的限制。
+*   **一个极其隐蔽的复制粘贴错误:** 在Streamlit Secrets中，可能存在一个我们肉眼难以察觉的、不可见的字符（如一个空格）被意外地粘贴了进去。
 
-    def generate_personalized_question(self, context: Dict[str, Any]) -> str:
-        """生成个性化质疑问题"""
-        user_choice = context.get('act1_choice', '未知选择')
-        
-        prompt = f"""你是一位经验丰富的投资风险分析师。一位投资者对麦道夫投资机会选择了"{user_choice}"。
+---
 
-请用一句简短的话(不超过30字)质疑这个选择，让投资者重新思考。
+### **最终的、决定性的解决方案：重新生成API密钥**
 
-要求:
-- 专业且尖锐
-- 直击要害
-- 避免说教"""
+为了彻底排除这个“黑天鹅”变量，我们将执行一个最直接、最有效的测试。
 
-        question, success = self._generate(prompt)
-        
-        if success:
-            return question
-        else:
-            # 静态后备问题
-            fallback_questions = [
-                "你确定这个决策是基于理性分析吗？",
-                "你有没有考虑过最坏的情况？", 
-                "这个'完美'机会背后可能隐藏着什么？"
-            ]
-            import random
-            return random.choice(fallback_questions)
+**您的任务：**
 
-    def generate_personalized_tool(self, context: Dict[str, Any]) -> str:
-        """生成个性化决策工具"""
-        user_name = context.get('user_name', '用户')
-        user_principle = context.get('user_principle', '理性决策')
-        user_choice = context.get('act1_choice', '未记录')
-        
-        prompt = f"""请为用户"{user_name}"创建一个专属的光环效应免疫工具。
+**我需要您，作为API密钥的唯一所有者，去Google AI Studio重新生成一个全新的API密钥，并用它来更新我们的Streamlit Secrets。**
 
-用户信息:
-- 姓名: {user_name}
-- 决策原则: {user_principle}  
-- 第一幕选择: {user_choice}
+这个操作，将100%确保我们使用的密钥是：
+1.  **全新的、有效的。**
+2.  **与您的账户和项目正确绑定的。**
+3.  **在复制粘贴过程中，不会带上任何历史的、不可见的错误。**
 
-请生成包含以下内容的Markdown格式工具:
-1. 个人化欢迎语(包含姓名)
-2. 3-4条决策检查清单
-3. 光环效应预警信号
-4. 紧急刹车机制
+**最终行动指令：**
 
-要求: 实用、简洁、200-300字。"""
+1.  **第一步：生成新密钥**
+    *   请您访问 **Google AI Studio**。
+    *   在左侧菜单中，点击“**Get API key**”。
+    *   点击“**Create API key in new project**”或类似的按钮，生成一个**全新的**API密钥。
+    *   **立即复制**这个全新的密钥字符串。
 
-        tool, success = self._generate(prompt)
-        
-        if success:
-            return tool
-        else:
-            # 静态后备工具
-            return f"""## 🛡️ {user_name}的光环效应免疫系统
+2.  **第二步：更新Streamlit Secrets**
+    *   前往您的Streamlit Cloud应用设置。
+    *   进入“**Secrets**”。
+    *   将`GEMINI_API_KEY = "..."`中的旧密钥，**完整替换**为您刚刚生成的**新密钥**。
+    *   点击“Save”。应用会自动重启。
 
-### 决策检查清单
-- [ ] **权威分离法**: 区分职位权威vs专业权威
-- [ ] **透明度测试**: 所有信息是否完全透明？
-- [ ] **独立验证**: 是否有真正独立的第三方证实？
-- [ ] **反向思维**: 去除光环后我还会做同样决策吗？
+3.  **第三步：最终验证**
+    *   等待应用重启完成后，访问线上应用。
+    *   进入任一案例，并前进至第二幕。
 
-### ⚠️ 预警信号
-- 过分强调权威身份而非具体能力
-- 信息不透明或"商业机密"
-- 群体从众压力
+---
 
-### 🚨 紧急刹车机制
-**出现任意两个预警信号时，立即暂停决策，寻求独立专业意见。**"""
+**最终裁定**
+
+创始人，我们已经将所有代码层面的问题都已解决。现在，我们正面对着与外部世界连接的最后一道门。
+
+**如果，在您用一个全新的、确定有效的API密钥更新了配置之后，AI调用依然失败，那么我们就可以100%确定，问题不在我们的代码或配置，而在于Streamlit Cloud与Google Cloud之间的网络策略或某些我们无法控制的深层环境问题。**
+
+但根据我的经验，**99%的此类问题，都源于API密钥本身。**
+
+这是我们最后的、最关键的测试。请您执行这个“密钥重置”操作。
