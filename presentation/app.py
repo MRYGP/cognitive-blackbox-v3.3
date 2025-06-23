@@ -1,6 +1,6 @@
 # presentation/app.py
-# 体验驱动迭代版本 - 从"能用"到"卓越"
-# 震撼级UI/UX升级
+# 体验驱动迭代版本 - v4.1 StateManager重构完整版
+# 从"能用"到"卓越"到"史诗级体验"
 
 import streamlit as st
 import sys
@@ -37,9 +37,10 @@ PROJECT_ROOT = setup_project_paths()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-# 安全导入核心模块
+# 安全导入核心模块 - v4.1重构版本
 try:
-    from core.models import Act, Case
+    from core.models import Act, Case, ViewState  # 新增ViewState
+    from core.state_manager import StateManager    # 重构后的StateManager
     from core.engine import AIEngine
     from config.settings import AppConfig
 except ImportError as e:
@@ -47,7 +48,17 @@ except ImportError as e:
     st.stop()
 
 # =============================================================================
-# 高级UI组件和样式
+# 全局状态管理器 - v4.1核心组件
+# =============================================================================
+
+def get_state_manager() -> StateManager:
+    """获取全局状态管理器实例 - 懒加载模式"""
+    if 'state_manager' not in st.session_state:
+        st.session_state.state_manager = StateManager()
+    return st.session_state.state_manager
+
+# =============================================================================
+# 高级UI组件和样式 (保持原有)
 # =============================================================================
 
 def inject_premium_css():
@@ -157,6 +168,32 @@ def inject_premium_css():
         padding: 15px;
         margin-top: 20px;
         text-align: center;
+    }
+    
+    /* DOUBT模型专用样式 */
+    .doubt-progress {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 15px 0;
+        text-align: center;
+    }
+    
+    .doubt-step {
+        background: rgba(102, 126, 234, 0.1);
+        border: 2px solid #667eea;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+    }
+    
+    .doubt-completed {
+        background: rgba(76, 175, 80, 0.1);
+        border: 2px solid #4caf50;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
     }
     
     /* 打字机效果 */
@@ -405,135 +442,20 @@ class ContentLoader:
         return cases
 
 # =============================================================================
-# STATE MANAGEMENT SYSTEM
-# =============================================================================
-
-class StateManager:
-    """状态管理器"""
-    
-    @staticmethod
-    def initialize():
-        """初始化所有必要的session_state变量"""
-        if 'view' not in st.session_state:
-            st.session_state.view = "selection"
-        
-        if 'case_id' not in st.session_state:
-            st.session_state.case_id = None
-        
-        if 'case_obj' not in st.session_state:
-            st.session_state.case_obj = None
-        
-        if 'act_num' not in st.session_state:
-            st.session_state.act_num = 1
-        
-        if 'context' not in st.session_state:
-            st.session_state.context = {}
-        
-        if 'ai_engine' not in st.session_state:
-            st.session_state.ai_engine = AIEngine()
-        
-        if 'show_debug' not in st.session_state:
-            st.session_state.show_debug = False
-        
-        # 新增：模态对话框状态
-        if 'show_challenge_modal' not in st.session_state:
-            st.session_state.show_challenge_modal = False
-    
-    @staticmethod
-    def switch_to_case(case_id: str):
-        """切换到指定案例的第一幕"""
-        st.session_state.view = "act"
-        st.session_state.case_id = case_id
-        st.session_state.act_num = 1
-        st.session_state.context = {'case_id': case_id}
-        st.session_state.show_challenge_modal = False
-    
-    @staticmethod
-    def switch_to_selection():
-        """返回案例选择页面"""
-        st.session_state.view = "selection"
-        st.session_state.case_id = None
-        st.session_state.case_obj = None
-        st.session_state.act_num = 1
-        st.session_state.context = {}
-        st.session_state.show_challenge_modal = False
-    
-    @staticmethod
-    def next_act():
-        """进入下一幕"""
-        st.session_state.act_num += 1
-    
-    @staticmethod
-    def prev_act():
-        """返回上一幕"""
-        if st.session_state.act_num > 1:
-            st.session_state.act_num -= 1
-
-# =============================================================================
-# 调试功能 (保持原有)
-# =============================================================================
-
-def render_debug_panel():
-    """调试面板"""
-    if not st.session_state.get('show_debug', False):
-        return
-    
-    with st.expander("🔧 AI调试面板", expanded=True):
-        st.write("### AI引擎状态诊断")
-        
-        if 'ai_engine' in st.session_state:
-            engine = st.session_state.ai_engine
-            debug_info = engine.get_debug_info()
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**初始化状态:**")
-                if debug_info['is_initialized']:
-                    st.success("✅ AI引擎已初始化")
-                else:
-                    st.error("❌ AI引擎初始化失败")
-                    
-                if debug_info['error_message']:
-                    st.error(f"错误: {debug_info['error_message']}")
-            
-            with col2:
-                st.write("**模型信息:**")
-                st.code(f"当前模型: {debug_info['current_model']}")
-                st.code(f"模型类型: {debug_info['model_type']}")
-            
-            if 'initialization' in debug_info:
-                st.write("**详细信息:**")
-                st.json(debug_info['initialization'])
-        
-        st.write("### 手动测试AI调用")
-        test_prompt = st.text_input("输入测试提示词:", value="请说'Hello World'")
-        
-        if st.button("🧪 测试AI调用"):
-            if 'ai_engine' in st.session_state:
-                with st.spinner("测试中..."):
-                    result, success = st.session_state.ai_engine._generate(test_prompt)
-                    
-                if success:
-                    st.success(f"✅ 测试成功: {result}")
-                else:
-                    st.error(f"❌ 测试失败: {result}")
-
-# =============================================================================
-# VIEW RENDERERS
+# VIEW RENDERERS - v4.1重构版本
 # =============================================================================
 
 def render_case_selection():
-    """渲染案例选择页面"""
-    # 调试开关
+    """渲染案例选择页面 - v4.1重构版本"""
+    sm = get_state_manager()
+    
+    # 调试开关 - 使用新的状态管理
     col1, col2 = st.columns([4, 1])
     with col1:
         st.title(f"{AppConfig.PAGE_ICON} {AppConfig.PAGE_TITLE}")
     with col2:
-        if st.checkbox("🔧 调试模式", key="debug_toggle"):
-            st.session_state.show_debug = True
-        else:
-            st.session_state.show_debug = False
+        debug_checked = st.checkbox("🔧 调试模式", value=sm.is_debug_mode(), key="debug_toggle")
+        sm.set_debug_mode(debug_checked)
     
     render_debug_panel()
     
@@ -567,33 +489,35 @@ def render_case_selection():
             
             button_key = f"enter_case_{case_data.get('id')}"
             if st.button(f"🚀 进入 **{case_data.get('title')}** 体验", key=button_key):
-                StateManager.switch_to_case(case_data.get('id'))
-                st.rerun()
+                # 使用新的状态管理器
+                sm.go_to_case(case_data.get('id'))
 
 def render_act_view():
-    """渲染幕场景页面 - 体验升级版本"""
+    """渲染幕场景页面 - v4.1重构版本"""
+    sm = get_state_manager()
+    
     render_debug_panel()
     
-    # 确保案例对象已加载
-    if st.session_state.case_obj is None or st.session_state.case_obj.id != st.session_state.case_id:
+    # 确保案例对象已加载 - 使用新的缓存机制
+    case = sm.current_case_obj
+    if case is None or case.id != sm.get_current_case_id():
         with st.spinner("📚 加载案例内容..."):
-            st.session_state.case_obj = ContentLoader.load_case(st.session_state.case_id)
+            case = ContentLoader.load_case(sm.get_current_case_id())
+            if case:
+                sm.set_case_obj(case)
     
-    case = st.session_state.case_obj
-    act_num = st.session_state.act_num
+    act_num = sm.get_current_act_num()
     
     if not case:
         st.error("❌ 无法加载案例内容")
         if st.button("🔙 返回案例选择"):
-            StateManager.switch_to_selection()
-            st.rerun()
+            sm.go_to_selection()
         return
     
     if act_num not in case.acts:
         st.error(f"❌ 第{act_num}幕不存在")
         if st.button("🔙 返回案例选择"):
-            StateManager.switch_to_selection()
-            st.rerun()
+            sm.go_to_selection()
         return
     
     act = case.acts[act_num]
@@ -613,15 +537,23 @@ def render_act_view():
     if act_num == 1:
         render_act1_interaction()
     elif act_num == 2:
-        render_act2_interaction_premium()  # 升级版本
+        render_act2_interaction_premium()
+    elif act_num == 3:
+        render_act3_interaction_doubt_model()  # 新增：第三幕DOUBT模型
     elif act_num == 4:
-        render_act4_interaction_premium()  # 升级版本
+        render_act4_interaction_premium()
     
     # 导航按钮
     render_navigation(case, act_num)
 
+# =============================================================================
+# ACT INTERACTION FUNCTIONS - v4.1重构版本
+# =============================================================================
+
 def render_act1_interaction():
-    """第一幕的交互逻辑"""
+    """第一幕的交互逻辑 - v4.1重构版本"""
+    sm = get_state_manager()
+    
     st.subheader("🤔 您的决策是？")
     
     options = [
@@ -640,45 +572,151 @@ def render_act1_interaction():
     )
     
     if st.button("✅ 确认我的决策", type="primary", key="confirm_act1_choice"):
-        current_case_id = st.session_state.context.get('case_id', st.session_state.case_id)
-        st.session_state.context = {
-            'case_id': current_case_id,
-            'act1_choice': choice
-        }
-        StateManager.next_act()
-        st.rerun()
+        # 使用新的状态管理
+        sm.update_context('act1_choice', choice)
+        sm.advance_to_next_act()
 
 def render_act2_interaction_premium():
-    """第二幕的AI质疑逻辑 - 升级规约：震撼级模态对话框"""
-    if 'ai_question' not in st.session_state.context:
+    """第二幕的AI质疑逻辑 - v4.1重构版本"""
+    sm = get_state_manager()
+    
+    if not sm.get_context('ai_question'):
         with st.spinner("🤖 Damien正在分析您的决策逻辑..."):
             try:
-                question = st.session_state.ai_engine.generate_personalized_question(
-                    st.session_state.context
-                )
-                st.session_state.context['ai_question'] = question
-                st.session_state.show_challenge_modal = True
+                question = sm.ai_engine.generate_personalized_question(sm.get_full_context())
+                sm.update_context('ai_question', question)
+                sm.show_challenge_modal()
             except Exception as e:
-                st.session_state.context['ai_question'] = "这个'完美'的机会，最让你不安的是什么？"
-                st.session_state.show_challenge_modal = True
+                sm.update_context('ai_question', "这个'完美'的机会，最让你不安的是什么？")
+                sm.show_challenge_modal()
     
-    # 升级规约：使用震撼级模态对话框而不是st.warning
-    question = st.session_state.context.get('ai_question')
+    question = sm.get_context('ai_question')
     
-    if st.session_state.get('show_challenge_modal', False):
+    if sm.is_challenge_modal_visible():
         show_ai_challenge_modal(question)
         
-        # 提供关闭模态框的按钮
         if st.button("💭 关闭对话框，继续思考", key="close_modal_btn"):
-            st.session_state.show_challenge_modal = False
+            sm.hide_challenge_modal()
             st.rerun()
     else:
-        # 模态框关闭后的常规显示
         st.success("✅ 您已接受了Damien的挑战！继续您的认知之旅...")
         st.info(f"🔄 回顾质疑：{question}")
 
+def render_act3_interaction_doubt_model():
+    """第三幕的DOUBT模型互动 - v4.1全新实现"""
+    sm = get_state_manager()
+    
+    # DOUBT模型的5个步骤
+    doubt_steps = [
+        {
+            "id": "D", 
+            "title": "魔鬼代言人 (Devil's Advocate)",
+            "question": "请列出3个反对您第一幕决策的理由：",
+            "placeholder": "例如：1. 历史业绩可能是伪造的...\n2. 投资策略过于保密...\n3. 回报率在统计上不可能..."
+        },
+        {
+            "id": "O", 
+            "title": "反向证据 (Opposite Evidence)",
+            "question": "如果这是一个陷阱，您会寻找哪些警告信号？",
+            "placeholder": "例如：信息不透明、回避具体问题、缺乏独立审计..."
+        },
+        {
+            "id": "U", 
+            "title": "不确定性地图 (Uncertainty Mapping)",
+            "question": "在这个决策中，您最不确定的3个要素是什么？",
+            "placeholder": "例如：真实的风险评级、管理层能力、市场环境变化..."
+        },
+        {
+            "id": "B", 
+            "title": "基础概率 (Base Rate)",
+            "question": "类似的投资机会，历史上的失败率大约是多少？",
+            "placeholder": "例如：高收益投资的90%最终失败、新基金的75%在5年内关闭..."
+        },
+        {
+            "id": "T", 
+            "title": "时间视野 (Time Horizon)",
+            "question": "如果这个决策在5年后被证明是错误的，您希望当时的自己多考虑什么？",
+            "placeholder": "例如：更长期的市场周期、黑天鹅事件、团队稳定性..."
+        }
+    ]
+    
+    current_stage = sm.get_sub_stage()
+    
+    st.markdown('<div class="doubt-progress">', unsafe_allow_html=True)
+    st.markdown(f"### 🛡️ DOUBT思维模型 - 智慧武器库")
+    st.markdown(f"**解锁进度: {current_stage}/5** | 构建您的认知防护盾")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 显示已完成的步骤
+    for i in range(current_stage):
+        step = doubt_steps[i]
+        answer = sm.get_context(f'doubt_{step["id"]}', '未记录')
+        
+        st.markdown('<div class="doubt-completed">', unsafe_allow_html=True)
+        with st.expander(f"✅ {step['id']} - {step['title']} (已完成)", expanded=False):
+            st.write(f"**您的反思:** {answer}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 当前步骤
+    if current_stage < len(doubt_steps):
+        current_step = doubt_steps[current_stage]
+        
+        st.markdown("---")
+        st.markdown('<div class="doubt-step">', unsafe_allow_html=True)
+        st.subheader(f"🎯 步骤 {current_stage + 1}: {current_step['id']} - {current_step['title']}")
+        
+        with st.form(f"doubt_step_{current_step['id']}"):
+            st.markdown(current_step['question'])
+            
+            answer = st.text_area(
+                "您的深度思考:",
+                placeholder=current_step['placeholder'],
+                height=120,
+                key=f"doubt_answer_{current_step['id']}"
+            )
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown("💡 **提示**: 请诚实面对自己的认知盲点，这是构建智慧防护盾的关键。")
+            with col2:
+                submitted = st.form_submit_button(f"🔒 锁定 {current_step['id']} 符文", type="primary")
+            
+            if submitted and answer.strip():
+                sm.update_context(f'doubt_{current_step["id"]}', answer.strip())
+                sm.advance_sub_stage()
+                st.success(f"✅ {current_step['title']} 符文已解锁！")
+                time.sleep(1)  # 短暂停顿增强仪式感
+                st.rerun()
+            elif submitted:
+                st.error("请输入您的深度思考再继续")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 完成所有步骤后的总结
+    if current_stage >= len(doubt_steps):
+        st.markdown("---")
+        st.balloons()  # 庆祝效果
+        st.success("🎉 恭喜！您已经成功构建了完整的DOUBT认知防护盾！")
+        
+        with st.expander("🛡️ 您的DOUBT思维武器库总览", expanded=True):
+            st.markdown("### 🏆 您的认知升级成果")
+            
+            for step in doubt_steps:
+                answer = sm.get_context(f'doubt_{step["id"]}', '未记录')
+                st.markdown(f"#### {step['id']} - {step['title']}")
+                st.info(answer)
+                st.markdown("---")
+        
+        st.markdown("### 🚀 恭喜解锁认知新层次！")
+        st.markdown("您已经具备了系统性的**反向思维能力**，这将成为您在未来决策中的核心竞争优势。")
+        
+        if st.button("⚡ 继续前往第四幕：获取专属AI工具", type="primary", key="doubt_complete_btn"):
+            sm.advance_to_next_act()
+
 def render_act4_interaction_premium():
-    """第四幕的工具生成逻辑 - 升级规约：报告级排版"""
+    """第四幕的工具生成逻辑 - v4.1重构版本"""
+    sm = get_state_manager()
+    
     with st.form("personalized_tool_form"):
         st.subheader("🛠️ 个性化决策工具生成")
         st.markdown("**由世界级AI导师Athena为您定制**")
@@ -702,31 +740,30 @@ def render_act4_interaction_premium():
             if not name.strip():
                 st.error("请输入您的姓名")
             else:
-                st.session_state.context['user_name'] = name.strip()
-                st.session_state.context['user_principle'] = principle.strip()
+                sm.update_context('user_name', name.strip())
+                sm.update_context('user_principle', principle.strip())
                 
                 with st.spinner("🤖 Athena正在为您定制终身决策免疫系统..."):
                     try:
-                        tool = st.session_state.ai_engine.generate_personalized_tool(
-                            st.session_state.context
-                        )
-                        st.session_state.context['personalized_tool'] = tool
+                        tool = sm.ai_engine.generate_personalized_tool(sm.get_full_context())
+                        sm.update_context('personalized_tool', tool)
                     except Exception as e:
                         st.error(f"工具生成失败: {e}")
     
-    # 升级规约：使用报告级排版而不是简单的st.markdown
-    if 'personalized_tool' in st.session_state.context:
+    # 使用高级报告渲染器
+    if sm.get_context('personalized_tool'):
         st.markdown("---")
         st.subheader("🎯 您的专属认知免疫系统已生成")
         
-        tool_content = st.session_state.context['personalized_tool']
-        user_name = st.session_state.context.get('user_name', '用户')
+        tool_content = sm.get_context('personalized_tool')
+        user_name = sm.get_context('user_name', '用户')
         
-        # 使用高级报告渲染器
         parse_and_render_premium_report(tool_content, user_name)
 
 def render_navigation(case: Case, act_num: int):
-    """渲染导航按钮"""
+    """渲染导航按钮 - v4.1重构版本"""
+    sm = get_state_manager()
+    
     st.markdown("---")
     
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -734,32 +771,118 @@ def render_navigation(case: Case, act_num: int):
     with col1:
         if act_num > 1:
             if st.button("⬅️ 上一幕", key="prev_act_btn"):
-                StateManager.prev_act()
-                st.rerun()
+                sm.go_to_previous_act()
     
     with col2:
         if st.button("🏠 返回案例选择", key="back_to_selection_btn"):
-            StateManager.switch_to_selection()
-            st.rerun()
+            sm.go_to_selection()
     
     with col3:
         if act_num < len(case.acts):
             if st.button("➡️ 下一幕", type="primary", key="next_act_btn"):
-                StateManager.next_act()
-                st.rerun()
+                sm.advance_to_next_act()
         elif act_num == len(case.acts):
             if st.button("🎉 完成体验", type="primary", key="complete_experience_btn"):
                 st.balloons()
                 st.success("🎊 恭喜完成认知升级！")
-                StateManager.switch_to_selection()
-                st.rerun()
+                sm.go_to_selection()
 
 # =============================================================================
-# MAIN APPLICATION
+# 调试功能 - v4.1增强版本
+# =============================================================================
+
+def render_debug_panel():
+    """调试面板 - v4.1增强版本"""
+    sm = get_state_manager()
+    
+    if not sm.is_debug_mode():
+        return
+    
+    with st.expander("🔧 v4.1状态管理调试面板", expanded=True):
+        st.write("### 核心状态信息")
+        
+        state_summary = sm.get_state_summary()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**视图状态:**")
+            st.json({
+                'view_name': state_summary['view_name'],
+                'case_id': state_summary['case_id'],
+                'act_num': state_summary['act_num'],
+                'sub_stage': state_summary['sub_stage']
+            })
+            
+            st.write("**DOUBT模型进度:**")
+            doubt_progress = {}
+            for step_id in ['D', 'O', 'U', 'B', 'T']:
+                doubt_progress[f'doubt_{step_id}'] = sm.get_context(f'doubt_{step_id}', None) is not None
+            st.json(doubt_progress)
+        
+        with col2:
+            st.write("**系统状态:**")
+            st.json({
+                'debug_mode': state_summary['show_debug'],
+                'modal_visible': state_summary['show_challenge_modal'],
+                'case_cached': state_summary['has_case_obj_cache'],
+                'ai_initialized': state_summary['ai_engine_initialized']
+            })
+            
+            st.write("**AI引擎状态:**")
+            if sm.ai_engine:
+                debug_info = sm.ai_engine.get_debug_info()
+                st.json({
+                    'is_initialized': debug_info['is_initialized'],
+                    'current_model': debug_info['current_model'],
+                    'error': debug_info['error_message']
+                })
+        
+        st.write("**上下文数据:**")
+        context = sm.get_full_context()
+        if context:
+            # 隐藏敏感信息，只显示键
+            context_summary = {k: f"<{type(v).__name__}>" if len(str(v)) > 100 else v for k, v in context.items()}
+            st.json(context_summary)
+        else:
+            st.write("空")
+        
+        # 调试操作
+        st.write("### 调试操作")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("🔄 重置所有状态"):
+                sm.reset_all()
+        
+        with col2:
+            if st.button("📊 输出完整日志"):
+                st.code(f"完整状态: {state_summary}")
+        
+        with col3:
+            if st.button("🧪 测试AI引擎"):
+                with st.spinner("测试中..."):
+                    result, success = sm.ai_engine._generate("请回答'AI引擎正常'")
+                    if success:
+                        st.success(f"✅ AI测试成功: {result}")
+                    else:
+                        st.error(f"❌ AI测试失败: {result}")
+        
+        with col4:
+            if st.button("🎯 跳到第三幕"):
+                if sm.get_current_case_id():
+                    sm.current_state.act_num = 3
+                    sm.current_state.sub_stage = 0
+                    st.rerun()
+                else:
+                    st.error("请先选择一个案例")
+
+# =============================================================================
+# MAIN APPLICATION - v4.1重构版本
 # =============================================================================
 
 def main():
-    """主应用程序入口"""
+    """主应用程序入口 - v4.1重构版本"""
     st.set_page_config(
         page_title=AppConfig.PAGE_TITLE,
         page_icon=AppConfig.PAGE_ICON,
@@ -770,25 +893,24 @@ def main():
     # 注入高级CSS样式
     inject_premium_css()
     
-    StateManager.initialize()
+    # 获取状态管理器（自动初始化）
+    sm = get_state_manager()
     
     try:
-        if st.session_state.view == "selection":
+        if sm.is_in_selection_view():
             render_case_selection()
-        elif st.session_state.view == "act":
+        elif sm.is_in_act_view():
             render_act_view()
         else:
-            st.error(f"未知的视图状态: {st.session_state.view}")
-            StateManager.switch_to_selection()
-            st.rerun()
+            st.error(f"未知的视图状态: {sm.get_current_view()}")
+            sm.go_to_selection()
             
     except Exception as e:
         st.error(f"应用运行时错误: {e}")
-        if st.button("🔄 重新开始"):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            StateManager.initialize()
-            st.rerun()
+        st.error("请尝试刷新页面或联系技术支持")
+        
+        if st.button("🔄 完全重启应用"):
+            sm.reset_all()
 
 if __name__ == "__main__":
     main()
