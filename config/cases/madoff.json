@@ -1,1 +1,15 @@
-
+{
+  "id": "madoff",
+  "title": "麦道夫庞氏骗局",
+  "tagline": "“前纳斯达克主席”的致命光环",
+  "bias": [
+    "光环效应",
+    "权威偏误",
+    "群体从众"
+  ],
+  "icon": "🛡️",
+  "difficulty": "高级",
+  "duration_min": 18,
+  "estimated_loss_usd": "650亿",
+  "script_file": "madoff_script.md"
+}
