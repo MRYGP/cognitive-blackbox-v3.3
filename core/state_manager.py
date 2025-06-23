@@ -144,6 +144,39 @@ class StateManager:
             st.error("无法返回上一幕，请重试")
     
     # =====================================================
+    # AI反馈系统管理 (v4.1新增)
+    # =====================================================
+    
+    def set_feedback(self, feedback: str):
+        """设置AI反馈内容"""
+        self.current_state.set_feedback(feedback)
+        logger.info(f"StateManager: 设置AI反馈")
+    
+    def get_current_feedback(self) -> str:
+        """获取当前反馈内容"""
+        return self.current_state.current_feedback
+    
+    def is_showing_feedback(self) -> bool:
+        """检查是否正在显示反馈"""
+        return self.current_state.show_feedback
+    
+    def clear_feedback(self):
+        """清除反馈状态"""
+        self.current_state.clear_feedback()
+        logger.info(f"StateManager: 清除AI反馈")
+    
+    def advance_sub_stage_with_feedback_check(self):
+        """进入下一个子阶段前检查反馈状态"""
+        if self.current_state.show_feedback:
+            # 如果正在显示反馈，清除反馈并进入下一阶段
+            self.clear_feedback()
+            self.advance_sub_stage()
+        else:
+            # 如果没有显示反馈，说明用户刚提交答案，需要生成反馈
+            # 这个逻辑将在第三幕交互中处理
+            pass
+    
+    # =====================================================
     # 多步骤交互支持 (为第三幕DOUBT模型准备)
     # =====================================================
     
