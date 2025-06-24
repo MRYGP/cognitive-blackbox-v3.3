@@ -687,7 +687,7 @@ def render_act4_interaction():
     
     st.header("🛡️ 您的专属认知免疫系统")
     
-    # 检查是否需要生成工具
+    # 修复：使用 get_context 替代不存在的 has_context
     if not sm.get_context('personalized_tool_result'):
         st.info("🔄 正在为您定制专属智慧...")
         
@@ -704,7 +704,8 @@ def render_act4_interaction():
     if not tool_result:
         st.error("❌ 工具生成失败，请重试")
         if st.button("🔄 重新生成", key="retry_tool_generation"):
-            sm.clear_context('personalized_tool_result')
+            # 修复：使用 update_context 清除而不是 clear_context
+            sm.update_context('personalized_tool_result', None)
             st.rerun()
         return
     
@@ -715,7 +716,73 @@ def render_act4_interaction():
     
     # CXO-04: 使用价值确认体验渲染工具
     context = sm.get_full_context()
-    ValueConfirmationManager.render_act4_with_unlock_experience(tool_result, context)
+    
+    # 检查是否支持增强功能
+    if ENHANCED_FEATURES_AVAILABLE:
+        ValueConfirmationManager.render_act4_with_unlock_experience(tool_result, context)
+    else:
+        # fallback: 标准工具显示
+        render_standard_tool_display(tool_result, context)
+
+def render_standard_tool_display(tool_result, context):
+    """标准工具显示（fallback方案）"""
+    sm = get_state_manager()
+    
+    # 获取工具内容
+    tool_content = tool_result.get('content', '') or tool_result.get('fallback_content', '')
+    user_name = context.get('user_name', '用户')
+    
+    if not tool_content:
+        st.error("❌ 无法生成工具内容")
+        return
+    
+    # 简单的解锁机制（不依赖新模块）
+    is_unlocked = st.session_state.get('tool_unlocked', False)
+    
+    if not is_unlocked:
+        st.info("🎯 您的专属智慧已生成完成！")
+        
+        # 显示模糊预览
+        st.markdown("""
+        <div style="filter: blur(5px); opacity: 0.6;">
+        """, unsafe_allow_html=True)
+        
+        # 显示前几行作为预览
+        preview_lines = tool_content.split('\n')[:5]
+        preview_text = '\n'.join(preview_lines) + '\n\n*[内容已模糊，点击解锁查看完整内容]*'
+        st.markdown(preview_text)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # 解锁按钮
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🔓 解锁我的专属智慧", type="primary", key="unlock_tool_simple"):
+                st.session_state.tool_unlocked = True
+                st.rerun()
+    else:
+        # 已解锁，显示完整内容
+        st.balloons()
+        st.success("🎊 解锁成功！您的专属智慧现已激活！")
+        
+        # 显示完整工具内容
+        parse_and_render_premium_report(tool_content, user_name)
+        
+        # 下载选项
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                "📥 下载认知免疫系统",
+                data=tool_content,
+                file_name=f"认知免疫系统_{user_name}.md",
+                mime="text/markdown"
+            )
+        with col2:
+            if st.button("🔄 体验其他案例", key="try_other_cases"):
+                # 重置解锁状态
+                if 'tool_unlocked' in st.session_state:
+                    del st.session_state.tool_unlocked
+                sm.go_to_selection()
 
 def render_navigation(case: Case, act_num: int):
     """渲染导航按钮 - v4.1重构版本"""
