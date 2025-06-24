@@ -842,21 +842,56 @@ def render_debug_panel():
                 else:
                     st.error("请先选择一个案例")
         
-        # CXO-03: 新增转场效果预览
+        # CXO-03: 转场效果测试 - 直接实现，不依赖缺失的方法
         st.subheader("🎬 转场效果测试")
-        TransitionManager.create_transition_preview()
-        # CXO-04: 新增解锁状态控制
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("预览 1→2 转场", key="preview_1_to_2"):
+                if ENHANCED_FEATURES_AVAILABLE:
+                    TransitionManager.show_transition(1, 2)
+                else:
+                    st.info("转场功能暂不可用")
+        
+        with col2:
+            if st.button("预览 2→3 转场", key="preview_2_to_3"):
+                if ENHANCED_FEATURES_AVAILABLE:
+                    TransitionManager.show_transition(2, 3)
+                else:
+                    st.info("转场功能暂不可用")
+        
+        with col3:
+            if st.button("预览 3→4 转场", key="preview_3_to_4"):
+                if ENHANCED_FEATURES_AVAILABLE:
+                    TransitionManager.show_transition(3, 4)
+                else:
+                    st.info("转场功能暂不可用")
+        
+        # CXO-04: 解锁状态控制
         st.subheader("🔓 解锁状态控制")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔒 锁定工具", key="lock_tool_debug"):
-                sm.reset_tool_unlock_status()
-                st.success("工具已锁定")
+                if hasattr(sm, 'reset_tool_unlock_status'):
+                    sm.reset_tool_unlock_status()
+                    st.success("工具已锁定")
+                else:
+                    if 'tool_unlocked' in st.session_state:
+                        del st.session_state.tool_unlocked
+                    st.success("工具已锁定")
         with col2:
             if st.button("🔓 解锁工具", key="unlock_tool_debug"):
-                sm.unlock_tool()
-                st.success("工具已解锁")
-        st.write(f"当前解锁状态: {'🔓 已解锁' if sm.is_tool_unlocked() else '🔒 已锁定'}")
+                if hasattr(sm, 'unlock_tool'):
+                    sm.unlock_tool()
+                    st.success("工具已解锁")
+                else:
+                    st.session_state.tool_unlocked = True
+                    st.success("工具已解锁")
+        
+        # 显示当前解锁状态
+        is_unlocked = st.session_state.get('tool_unlocked', False)
+        st.write(f"当前解锁状态: {'🔓 已解锁' if is_unlocked else '🔒 已锁定'}")
 
 # =============================================================================
 # MAIN APPLICATION - v4.1重构版本
