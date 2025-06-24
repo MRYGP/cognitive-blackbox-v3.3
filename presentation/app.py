@@ -49,6 +49,28 @@ except ImportError as e:
     st.error(f"🚨 核心模块导入失败: {e}")
     st.stop()
 
+# === CXO新增功能导入 - 带错误处理 ===
+try:
+    from core.transition_manager import TransitionManager
+    from core.value_confirmation import ValueConfirmationManager
+    ENHANCED_FEATURES_AVAILABLE = True
+except ImportError as e:
+    print(f"警告: CXO增强功能导入失败: {e}")
+    ENHANCED_FEATURES_AVAILABLE = False
+    
+    # 创建fallback类，避免代码报错
+    class TransitionManager:
+        @staticmethod
+        def show_transition(from_act: int, to_act: int):
+            st.info(f"转场效果: 从第{from_act}幕到第{to_act}幕")
+            time.sleep(1)
+    
+    class ValueConfirmationManager:
+        @staticmethod
+        def render_act4_with_unlock_experience(tool_result, context):
+            st.info("解锁体验功能暂不可用，显示标准工具")
+            return False
+
 # =============================================================================
 # 全局状态管理器 - v4.1核心组件
 # =============================================================================
