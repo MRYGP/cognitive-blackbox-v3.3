@@ -5,7 +5,7 @@
 """
 
 import streamlit as st
-from typing import Optional
+from typing import Optional, Dict
 from core.models import ViewState, Case
 from core.engine import AIEngine
 import logging
@@ -307,3 +307,65 @@ class StateManager:
         self._ensure_ai_engine_initialized()
         
         st.rerun()
+    
+    # === CXO-04: 价值确认体验的状态管理 ===
+    
+    def is_tool_unlocked(self) -> bool:
+        """检查用户是否已经解锁了工具"""
+        return st.session_state.get('tool_unlocked', False)
+    
+    def unlock_tool(self):
+        """解锁用户的专属工具"""
+        st.session_state.tool_unlocked = True
+        
+    def reset_tool_unlock_status(self):
+        """重置工具解锁状态（新案例开始时调用）"""
+        if 'tool_unlocked' in st.session_state:
+            del st.session_state.tool_unlocked
+    
+    def set_transition_active(self, is_active: bool):
+        """设置转场动画是否正在播放"""
+        st.session_state.transition_active = is_active
+    
+    def is_transition_active(self) -> bool:
+        """检查是否正在播放转场动画"""
+        return st.session_state.get('transition_active', False)
+    
+    # === CXO-03: 叙事转场的导航方法重构 ===
+    
+    def advance_to_next_act_with_transition(self, from_act: int, to_act: int):
+        """带转场动画的幕间跳转"""
+        # 设置转场状态
+        self.set_transition_active(True)
+        
+        # 更新目标幕数
+        self.current_state.act_num = to_act
+        
+        # 如果跳转到新案例，重置解锁状态
+        if to_act == 1:
+            self.reset_tool_unlock_status()
+        
+        # 触发页面重新渲染
+        st.rerun()
+    
+    def complete_transition(self):
+        """完成转场动画，进入正常渲染状态"""
+        self.set_transition_active(False)
+        st.rerun()
+    
+    # === 扩展的调试信息 ===
+    
+    def get_enhanced_debug_info(self) -> Dict[str, any]:
+        """获取增强的调试信息，包含新的状态"""
+        base_info = self.get_debug_info()
+        
+        # 添加新的状态信息
+        enhanced_info = {
+            **base_info,
+            'tool_unlocked': self.is_tool_unlocked(),
+            'transition_active': self.is_transition_active(),
+            'unlock_feature_enabled': True,
+            'transition_feature_enabled': True
+        }
+        
+        return enhanced_info
