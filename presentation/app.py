@@ -688,7 +688,7 @@ def render_act4_interaction():
     st.header("🛡️ 您的专属认知免疫系统")
     
     # 检查是否需要生成工具
-    if not sm.has_context('personalized_tool_result'):
+    if not sm.get_context('personalized_tool_result'):
         st.info("🔄 正在为您定制专属智慧...")
         
         # 生成个性化工具
