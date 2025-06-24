@@ -682,13 +682,14 @@ def render_act3_interaction():
         sm.advance_to_next_act_with_transition(3, 4)
 
 def render_act4_interaction():
-    """第四幕的交互逻辑 - CXO-04价值确认体验"""
+    """第四幕的交互逻辑 - 简化版价值确认体验"""
     sm = get_state_manager()
     
     st.header("🛡️ 您的专属认知免疫系统")
     
-    # 修复：使用 get_context 替代不存在的 has_context
-    if not sm.get_context('personalized_tool_result'):
+    # 检查是否需要生成工具
+    tool_result = sm.get_context('personalized_tool_result')
+    if not tool_result:
         st.info("🔄 正在为您定制专属智慧...")
         
         # 生成个性化工具
@@ -698,13 +699,9 @@ def render_act4_interaction():
             sm.update_context('personalized_tool_result', tool_result)
             st.rerun()
     
-    # 获取工具生成结果
-    tool_result = sm.get_context('personalized_tool_result')
-    
     if not tool_result:
         st.error("❌ 工具生成失败，请重试")
         if st.button("🔄 重新生成", key="retry_tool_generation"):
-            # 修复：使用 update_context 清除而不是 clear_context
             sm.update_context('personalized_tool_result', None)
             st.rerun()
         return
@@ -714,42 +711,57 @@ def render_act4_interaction():
         with st.expander("🔍 AI工具生成诊断", expanded=False):
             st.json(tool_result)
     
-    # CXO-04: 使用价值确认体验渲染工具
-    context = sm.get_full_context()
-    
-    # 检查是否支持增强功能
-    if ENHANCED_FEATURES_AVAILABLE:
-        ValueConfirmationManager.render_act4_with_unlock_experience(tool_result, context)
-    else:
-        # fallback: 标准工具显示
-        render_standard_tool_display(tool_result, context)
-
-def render_standard_tool_display(tool_result, context):
-    """标准工具显示（fallback方案）"""
-    sm = get_state_manager()
-    
     # 获取工具内容
     tool_content = tool_result.get('content', '') or tool_result.get('fallback_content', '')
-    user_name = context.get('user_name', '用户')
+    user_name = sm.get_context('user_name', '用户')
+    case_id = sm.get_current_case_id()
     
     if not tool_content:
         st.error("❌ 无法生成工具内容")
         return
     
-    # 简单的解锁机制（不依赖新模块）
+    # CXO-04: 简化版解锁体验（不依赖外部模块）
     is_unlocked = st.session_state.get('tool_unlocked', False)
     
     if not is_unlocked:
-        st.info("🎯 您的专属智慧已生成完成！")
+        # 显示价值确认界面
+        value_descriptions = {
+            'madoff': {'framework': '四维独立验证矩阵', 'benefit': '权威陷阱免疫能力'},
+            'lehman': {'framework': 'DOUBT思维模型', 'benefit': '确认偏误破解术'},
+            'ltcm': {'framework': 'RISK思维模型', 'benefit': '过度自信校正器'}
+        }
         
-        # 显示模糊预览
-        st.markdown("""
-        <div style="filter: blur(5px); opacity: 0.6;">
+        case_info = value_descriptions.get(case_id, {'framework': '认知免疫系统', 'benefit': '决策智慧升级'})
+        
+        # 价值确认界面
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius: 15px; padding: 2rem; text-align: center; color: white; 
+                    margin: 2rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+            <div style="font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem;">
+                🎉 恭喜 {user_name}！您的专属智慧已准备就绪
+            </div>
+            <div style="margin-bottom: 1.5rem;">
+                您刚刚完成了一场深度的认知训练，现在已获得：<br>
+                <span style="background: linear-gradient(45deg, #FFD54F, #FFC107); color: #333; 
+                           padding: 8px 16px; border-radius: 20px; font-weight: 600; margin: 0 8px;">
+                    {case_info['framework']}
+                </span>
+                <span style="background: linear-gradient(45deg, #FFD54F, #FFC107); color: #333; 
+                           padding: 8px 16px; border-radius: 20px; font-weight: 600; margin: 0 8px;">
+                    {case_info['benefit']}
+                </span>
+            </div>
+        </div>
         """, unsafe_allow_html=True)
         
-        # 显示前几行作为预览
-        preview_lines = tool_content.split('\n')[:5]
-        preview_text = '\n'.join(preview_lines) + '\n\n*[内容已模糊，点击解锁查看完整内容]*'
+        # 显示模糊的工具预览
+        st.markdown("""
+        <div style="filter: blur(8px); opacity: 0.6; pointer-events: none;">
+        """, unsafe_allow_html=True)
+        
+        preview_lines = tool_content.split('\n')[:8]
+        preview_text = '\n'.join(preview_lines) + '\n\n*[内容已模糊处理，点击解锁查看完整内容]*'
         st.markdown(preview_text)
         
         st.markdown("</div>", unsafe_allow_html=True)
@@ -757,7 +769,7 @@ def render_standard_tool_display(tool_result, context):
         # 解锁按钮
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("🔓 解锁我的专属智慧", type="primary", key="unlock_tool_simple"):
+            if st.button("🗝️ 解锁我的专属智慧", type="primary", key="unlock_tool_button"):
                 st.session_state.tool_unlocked = True
                 st.rerun()
     else:
@@ -768,7 +780,7 @@ def render_standard_tool_display(tool_result, context):
         # 显示完整工具内容
         parse_and_render_premium_report(tool_content, user_name)
         
-        # 下载选项
+        # 下载和导航选项
         col1, col2 = st.columns(2)
         with col1:
             st.download_button(
