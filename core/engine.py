@@ -45,11 +45,11 @@ class AIEngine:
             logging.error(self.error_message)
 
     def _initialize_with_premium_model(self):
-        """恢复高质量优先策略：优先使用最佳模型，确保用户体验"""
+        """配额感知的优先策略：在配额耗尽期间优先使用可用模型"""
         model_priority = [
-            'gemini-2.5-pro',          # 主要模型：最高质量
+            'gemini-1.5-flash',        # 临时优先：配额限制最宽松，确保可用性
             'gemini-1.5-pro',          # 备选选项：稳定高质量
-            'gemini-1.5-flash'         # 最终备选：确保可用性
+            'gemini-2.5-pro'           # 配额恢复后的首选：最高质量
         ]
         
         for model_name in model_priority:
